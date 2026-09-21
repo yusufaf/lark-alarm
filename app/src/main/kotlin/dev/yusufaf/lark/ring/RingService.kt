@@ -20,7 +20,6 @@ import dev.yusufaf.lark.core.Alarm
 import dev.yusufaf.lark.schedule.AlarmScheduler
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 
 /**
@@ -49,10 +48,17 @@ class RingService : Service() {
     }
 
     private fun startRinging(id: Long) {
-        if (alarm != null) return // already ringing; ignore a second alarm until this one ends
-        // Blocking read of a tiny file: startForeground() must run within seconds of
-        // the receiver's startForegroundService() call.
+        // Promote before touching storage: startForeground() must run within seconds of
+        // the receiver's startForegroundService() call, whatever the file read does.
+        promote(alarm)
         val loaded = runBlocking { app.repository.get(id) }
+        if (alarm != null) {
+            // A second alarm fired mid-ring. The user is already being woken, so treat it
+            // as rung rather than dropping it silently and leaving it un-armed.
+            Log.i(AlarmScheduler.TAG, "alarm $id fired while ${alarm?.id} rings; re-arming it")
+            loaded?.let(::rearmAfterRing)
+            return
+        }
         promote(loaded)
         if (loaded == null) {
             Log.w(AlarmScheduler.TAG, "alarm $id fired but is not in the store")
@@ -93,15 +99,21 @@ class RingService : Service() {
         wakeLock?.takeIf { it.isHeld }?.release()
         alarm = null
         _ringingAlarmId.value = null
-
-        if (ringing.days.isEmpty()) {
-            app.scope.launch { app.repository.setEnabled(ringing.id, false) }
-            app.scheduler.cancel(ringing.id)
-        } else {
-            app.scheduler.schedule(ringing)
-        }
+        rearmAfterRing(ringing)
         ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
         stopSelf()
+    }
+
+    // One-shots are spent; weekly alarms move to their next day. The disable is awaited
+    // because the process may be killed right after stopSelf(), and a lost write would
+    // re-arm the one-shot for tomorrow on the next boot.
+    private fun rearmAfterRing(rung: Alarm) {
+        if (rung.days.isEmpty()) {
+            runBlocking { app.repository.setEnabled(rung.id, false) }
+            app.scheduler.cancel(rung.id)
+        } else {
+            app.scheduler.schedule(rung)
+        }
     }
 
     // Every start via startForegroundService() must be followed by startForeground(),

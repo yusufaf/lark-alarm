@@ -2,6 +2,7 @@ package dev.yusufaf.lark.data
 
 import android.content.Context
 import androidx.datastore.core.DataStore
+import androidx.datastore.core.handlers.ReplaceFileCorruptionHandler
 import androidx.datastore.dataStore
 import dev.yusufaf.lark.core.Alarm
 import dev.yusufaf.lark.core.AlarmStore
@@ -9,9 +10,12 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 
+// A corrupt file must not take the alarm clock down with it: start over empty instead
+// of throwing to every reader (including RingService, before it can startForeground()).
 private val Context.alarmDataStore: DataStore<AlarmStore> by dataStore(
     fileName = "alarms.json",
     serializer = AlarmStoreSerializer,
+    corruptionHandler = ReplaceFileCorruptionHandler { AlarmStore() },
 )
 
 class AlarmRepository(context: Context) {

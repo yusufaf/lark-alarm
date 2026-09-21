@@ -21,6 +21,9 @@ object AlarmStoreSerializer : Serializer<AlarmStore> {
         json.decodeFromString(AlarmStore.serializer(), input.readBytes().decodeToString())
     } catch (e: SerializationException) {
         throw CorruptionException("alarms.json is not a valid AlarmStore", e)
+    } catch (e: IllegalArgumentException) {
+        // DayOfWeek.of() rejects values outside 1..7 with this, not a SerializationException.
+        throw CorruptionException("alarms.json holds an invalid value", e)
     }
 
     override suspend fun writeTo(t: AlarmStore, output: OutputStream) {
