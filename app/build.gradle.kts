@@ -15,8 +15,10 @@ android {
         versionName = "0.0.0" // x-release-please-version
 
         // release-please bumps versionName; versionCode follows it so a
-        // semver bump is always an upgrade on the watch.
-        val (major, minor, patch) = versionName!!.split(".").map(String::toInt)
+        // semver bump is always an upgrade on the watch. Only the numeric core
+        // counts, so a prerelease suffix like -rc.1 doesn't break the build.
+        val (major, minor, patch) = Regex("""(\d+)\.(\d+)\.(\d+)""")
+            .find(versionName!!)!!.destructured.toList().map(String::toInt)
         // 0.0.0 is the unreleased placeholder; Android rejects versionCode 0.
         versionCode = maxOf(major * 10_000 + minor * 100 + patch, 1)
     }
