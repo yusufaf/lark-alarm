@@ -3,7 +3,17 @@
 
     <uses-feature android:name="android.hardware.type.watch" />
 
+    <!-- Auto-granted to alarm-clock apps; never SCHEDULE_EXACT_ALARM (denied by default). -->
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="android.permission.VIBRATE" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SYSTEM_EXEMPTED" />
+
     <application
+        android:name=".LarkApplication"
         android:icon="@drawable/ic_launcher"
         android:label="@string/app_name"
         android:theme="@android:style/Theme.DeviceDefault">
@@ -23,6 +33,36 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <activity
+            android:name=".ring.RingActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:launchMode="singleInstance"
+            android:showWhenLocked="true"
+            android:turnScreenOn="true"
+            android:theme="@android:style/Theme.DeviceDefault" />
+
+        <service
+            android:name=".ring.RingService"
+            android:exported="false"
+            android:foregroundServiceType="systemExempted" />
+
+        <receiver
+            android:name=".schedule.AlarmReceiver"
+            android:exported="false" />
+
+        <!-- Exported only for these protected system broadcasts; nothing else can send them. -->
+        <receiver
+            android:name=".schedule.BootReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.TIME_SET" />
+                <action android:name="android.intent.action.TIMEZONE_CHANGED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
     </application>
 
 </manifest>
