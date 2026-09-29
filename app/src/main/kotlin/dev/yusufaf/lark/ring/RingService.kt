@@ -1,8 +1,10 @@
 package dev.yusufaf.lark.ring
 
 import android.app.Service
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.ServiceInfo
 import android.media.AudioAttributes
 import android.os.Build
@@ -15,6 +17,7 @@ import android.os.VibrationEffect
 import android.os.Vibrator
 import android.util.Log
 import androidx.core.app.ServiceCompat
+import androidx.core.content.ContextCompat
 import dev.yusufaf.lark.LarkApplication
 import dev.yusufaf.lark.core.Alarm
 import dev.yusufaf.lark.schedule.AlarmScheduler
@@ -33,7 +36,19 @@ class RingService : Service() {
 
     private var vibrator: Vibrator? = null
     private var wakeLock: PowerManager.WakeLock? = null
+    private var screenWakeLock: PowerManager.WakeLock? = null
     private var alarm: Alarm? = null
+
+    // The system cancels app vibrations when the screen is turned off by the user, and
+    // Samsung's wrist-down gesture counts as that, so a ring the screen wake-up made
+    // visible would go silent a few seconds later. Only Dismiss or the timeout may stop it.
+    private val screenOffReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            Log.i(AlarmScheduler.TAG, "screen off mid-ring; restarting vibration")
+            vibrator?.let(::vibrate)
+        }
+    }
+    private var screenOffRegistered = false
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -73,7 +88,21 @@ class RingService : Service() {
         wakeLock = power.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "Lark:ring").also {
             it.acquire(RING_TIMEOUT_MS + 60_000)
         }
+        // Wear OS has no full-screen intents and the alarm notification does not wake the
+        // screen on its own (verified on a Galaxy Watch 4, #6), so turn it on ourselves.
+        @Suppress("DEPRECATION")
+        screenWakeLock = power.newWakeLock(
+            PowerManager.SCREEN_BRIGHT_WAKE_LOCK or PowerManager.ACQUIRE_CAUSES_WAKEUP,
+            "Lark:screen",
+        ).also { it.acquire(RING_TIMEOUT_MS) }
         vibrator = getSystemService(Vibrator::class.java).also { vibrate(it) }
+        ContextCompat.registerReceiver(
+            this,
+            screenOffReceiver,
+            IntentFilter(Intent.ACTION_SCREEN_OFF),
+            ContextCompat.RECEIVER_NOT_EXPORTED,
+        )
+        screenOffRegistered = true
         _ringingAlarmId.value = id
         handler.postDelayed(autoStop, RING_TIMEOUT_MS)
     }
@@ -95,8 +124,7 @@ class RingService : Service() {
         val ringing = alarm ?: return promoteAndStop()
         Log.i(AlarmScheduler.TAG, "alarm ${ringing.id} stopped: $reason")
         handler.removeCallbacks(autoStop)
-        vibrator?.cancel()
-        wakeLock?.takeIf { it.isHeld }?.release()
+        stopRingEffects()
         alarm = null
         _ringingAlarmId.value = null
         rearmAfterRing(ringing)
@@ -135,10 +163,19 @@ class RingService : Service() {
 
     override fun onDestroy() {
         handler.removeCallbacks(autoStop)
-        vibrator?.cancel()
-        wakeLock?.takeIf { it.isHeld }?.release()
+        stopRingEffects()
         _ringingAlarmId.value = null
         super.onDestroy()
+    }
+
+    private fun stopRingEffects() {
+        if (screenOffRegistered) {
+            unregisterReceiver(screenOffReceiver)
+            screenOffRegistered = false
+        }
+        vibrator?.cancel()
+        screenWakeLock?.takeIf { it.isHeld }?.release()
+        wakeLock?.takeIf { it.isHeld }?.release()
     }
 
     companion object {
