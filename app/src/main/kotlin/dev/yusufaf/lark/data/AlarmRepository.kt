@@ -47,7 +47,21 @@ class AlarmRepository(context: Context) {
         store.updateData { current ->
             current.copy(
                 alarms = current.alarms.map {
-                    if (it.id == id) it.copy(enabled = enabled, snoozedUntilEpochMs = null) else it
+                    if (it.id == id) {
+                        it.copy(enabled = enabled, snoozedUntilEpochMs = null, armedForEpochMs = null)
+                    } else {
+                        it
+                    }
+                },
+            )
+        }
+    }
+
+    suspend fun setArmedFor(id: Long, epochMs: Long?) {
+        store.updateData { current ->
+            current.copy(
+                alarms = current.alarms.map {
+                    if (it.id == id) it.copy(armedForEpochMs = epochMs) else it
                 },
             )
         }

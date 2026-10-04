@@ -132,12 +132,12 @@ class RingService : Service() {
         stopSelf()
     }
 
-    // One-shots are spent; weekly alarms move to their next day. The disable is awaited
-    // because the process may be killed right after stopSelf(), and a lost write would
-    // re-arm the one-shot for tomorrow on the next boot.
-    private fun rearmAfterRing(rung: Alarm) {
+    // One-shots are spent; weekly alarms move to their next day. The writes are awaited
+    // because the process may be killed right after stopSelf(), and a lost one would leave
+    // the past armed-for instant behind, so the next reschedule would ring it again.
+    private fun rearmAfterRing(rung: Alarm) = runBlocking {
         if (rung.days.isEmpty()) {
-            runBlocking { app.repository.setEnabled(rung.id, false) }
+            app.repository.setEnabled(rung.id, false)
             app.scheduler.cancel(rung.id)
         } else {
             app.scheduler.schedule(rung)
