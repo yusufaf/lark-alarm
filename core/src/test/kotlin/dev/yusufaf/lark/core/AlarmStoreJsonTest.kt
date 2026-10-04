@@ -23,6 +23,7 @@ class AlarmStoreJsonTest {
                     sound = true,
                     snoozeMinutes = 15,
                     snoozedUntilEpochMs = 1_700_000_000_000,
+                    armedForEpochMs = 1_700_000_600_000,
                 ),
             ),
             nextId = 4,
@@ -52,5 +53,21 @@ class AlarmStoreJsonTest {
         assertEquals(false, alarm.sound)
         assertEquals(10, alarm.snoozeMinutes)
         assertEquals(null, alarm.snoozedUntilEpochMs)
+        assertEquals(null, alarm.armedForEpochMs)
+    }
+
+    @Test
+    fun decodesFileWrittenBeforeArmedFor() {
+        // What the M1 build wrote (encodeDefaults = true), before armedForEpochMs existed.
+        val decoded = json.decodeFromString(
+            AlarmStore.serializer(),
+            """{"alarms":[{"id":1,"hour":14,"minute":25,"days":[],"label":"","enabled":true,""" +
+                """"sound":false,"snoozeMinutes":10,"snoozedUntilEpochMs":null}],"nextId":2}""",
+        )
+
+        assertEquals(
+            AlarmStore(alarms = listOf(Alarm(id = 1, hour = 14, minute = 25)), nextId = 2),
+            decoded,
+        )
     }
 }
