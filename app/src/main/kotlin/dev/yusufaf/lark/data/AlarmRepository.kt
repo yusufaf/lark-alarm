@@ -37,9 +37,14 @@ class AlarmRepository(context: Context) {
         return saved
     }
 
+    // armedForEpochMs belongs to the scheduler; a copy read earlier must not roll it back.
     suspend fun update(alarm: Alarm) {
         store.updateData { current ->
-            current.copy(alarms = current.alarms.map { if (it.id == alarm.id) alarm else it })
+            current.copy(
+                alarms = current.alarms.map {
+                    if (it.id == alarm.id) alarm.copy(armedForEpochMs = it.armedForEpochMs) else it
+                },
+            )
         }
     }
 

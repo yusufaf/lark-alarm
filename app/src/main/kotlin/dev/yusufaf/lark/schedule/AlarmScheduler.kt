@@ -52,8 +52,12 @@ class AlarmScheduler(private val context: Context, private val repository: Alarm
      * that passed while nothing was armed (watch off, slow BOOT_COMPLETED, process killed
      * mid-ring) rings late within [MISSED_GRACE] and is otherwise missed, instead of
      * rolling a one-shot over to tomorrow.
+     *
+     * [alarmsLost] is true when AlarmManager may have dropped its alarms (boot, app update).
+     * After a clock or zone change they are intact, so a trigger already in the past is
+     * being delivered, or was moved by the clock jump, not missed: leave it to AlarmManager.
      */
-    suspend fun rescheduleAll() {
+    suspend fun rescheduleAll(alarmsLost: Boolean) {
         val now = ZonedDateTime.now()
         repository.snapshot().forEach { alarm ->
             // finishRing settles a ringing alarm. Its armedFor is still in the past, so
@@ -61,7 +65,7 @@ class AlarmScheduler(private val context: Context, private val repository: Alarm
             if (alarm.id == RingService.ringingAlarmId.value) return@forEach
             // One alarm failing must not leave the ones after it un-armed.
             try {
-                reschedule(alarm, now)
+                reschedule(alarm, now, alarmsLost)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -70,8 +74,10 @@ class AlarmScheduler(private val context: Context, private val repository: Alarm
         }
     }
 
-    private suspend fun reschedule(alarm: Alarm, now: ZonedDateTime) {
-        when (alarm.rescheduleAction(now.toInstant())) {
+    private suspend fun reschedule(alarm: Alarm, now: ZonedDateTime, alarmsLost: Boolean) {
+        val action = alarm.rescheduleAction(now.toInstant())
+        if (!alarmsLost && action != RescheduleAction.Arm) return
+        when (action) {
             RescheduleAction.Arm -> schedule(alarm, now)
             RescheduleAction.RingNow -> ringLate(alarm, now)
             RescheduleAction.Disable -> {

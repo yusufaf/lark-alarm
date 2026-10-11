@@ -20,7 +20,12 @@ class BootReceiver : BroadcastReceiver() {
         val pending = goAsync()
         app.scope.launch {
             try {
-                app.scheduler.rescheduleAll()
+                app.scheduler.rescheduleAll(
+                    alarmsLost = intent.action in setOf(
+                        Intent.ACTION_BOOT_COMPLETED,
+                        Intent.ACTION_MY_PACKAGE_REPLACED,
+                    ),
+                )
             } finally {
                 pending.finish()
             }
