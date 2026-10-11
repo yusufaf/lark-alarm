@@ -12,6 +12,8 @@ import dev.yusufaf.lark.core.MISSED_GRACE
 import dev.yusufaf.lark.core.RescheduleAction
 import dev.yusufaf.lark.core.nextTrigger
 import dev.yusufaf.lark.core.rescheduleAction
+import dev.yusufaf.lark.ring.RingService
+import kotlinx.coroutines.CancellationException
 import java.time.Instant
 import java.time.ZonedDateTime
 
@@ -54,20 +56,34 @@ class AlarmScheduler(private val context: Context, private val repository: Alarm
     suspend fun rescheduleAll() {
         val now = ZonedDateTime.now()
         repository.snapshot().forEach { alarm ->
-            when (alarm.rescheduleAction(now.toInstant())) {
-                RescheduleAction.Arm -> schedule(alarm, now)
-                RescheduleAction.RingNow -> ringLate(alarm, now)
-                RescheduleAction.Disable -> {
-                    Log.i(TAG, "alarm ${alarm.id} missed (armed for ${armedFor(alarm, now)}); disabling")
-                    // TODO(#12): post the missed-alarm notification.
-                    repository.setEnabled(alarm.id, false)
-                    cancel(alarm.id)
-                }
-                RescheduleAction.SkipToNext -> {
-                    Log.i(TAG, "alarm ${alarm.id} missed (armed for ${armedFor(alarm, now)}); skipping to next")
-                    // TODO(#12): post the missed-alarm notification.
-                    schedule(alarm, now)
-                }
+            // finishRing settles a ringing alarm. Its armedFor is still in the past, so
+            // acting on it here would re-fire it or spend it mid-ring.
+            if (alarm.id == RingService.ringingAlarmId.value) return@forEach
+            // One alarm failing must not leave the ones after it un-armed.
+            try {
+                reschedule(alarm, now)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.e(TAG, "failed to reschedule alarm ${alarm.id}", e)
+            }
+        }
+    }
+
+    private suspend fun reschedule(alarm: Alarm, now: ZonedDateTime) {
+        when (alarm.rescheduleAction(now.toInstant())) {
+            RescheduleAction.Arm -> schedule(alarm, now)
+            RescheduleAction.RingNow -> ringLate(alarm, now)
+            RescheduleAction.Disable -> {
+                Log.i(TAG, "alarm ${alarm.id} missed (armed for ${armedFor(alarm, now)}); disabling")
+                // TODO(#12): post the missed-alarm notification.
+                repository.setEnabled(alarm.id, false)
+                cancel(alarm.id)
+            }
+            RescheduleAction.SkipToNext -> {
+                Log.i(TAG, "alarm ${alarm.id} missed (armed for ${armedFor(alarm, now)}); skipping to next")
+                // TODO(#12): post the missed-alarm notification.
+                schedule(alarm, now)
             }
         }
     }
