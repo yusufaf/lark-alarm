@@ -27,7 +27,8 @@ import kotlinx.coroutines.runBlocking
 
 /**
  * Keeps the watch vibrating while an alarm rings. Runs as a `systemExempted` foreground
- * service, which exact-alarm apps may start from the background even after boot.
+ * service, which an exact alarm's delivery may start from the background even after boot.
+ * Other receivers (BOOT_COMPLETED, MY_PACKAGE_REPLACED) may not, so go through AlarmManager.
  */
 class RingService : Service() {
     private val app get() = application as LarkApplication
@@ -132,12 +133,12 @@ class RingService : Service() {
         stopSelf()
     }
 
-    // One-shots are spent; weekly alarms move to their next day. The disable is awaited
-    // because the process may be killed right after stopSelf(), and a lost write would
-    // re-arm the one-shot for tomorrow on the next boot.
-    private fun rearmAfterRing(rung: Alarm) {
+    // One-shots are spent; weekly alarms move to their next day. The writes are awaited
+    // because the process may be killed right after stopSelf(), and a lost one would leave
+    // the past armed-for instant behind, so the next reschedule would ring it again.
+    private fun rearmAfterRing(rung: Alarm) = runBlocking {
         if (rung.days.isEmpty()) {
-            runBlocking { app.repository.setEnabled(rung.id, false) }
+            app.repository.setEnabled(rung.id, false)
             app.scheduler.cancel(rung.id)
         } else {
             app.scheduler.schedule(rung)

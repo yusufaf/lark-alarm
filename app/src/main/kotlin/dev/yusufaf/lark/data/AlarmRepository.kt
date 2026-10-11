@@ -37,9 +37,14 @@ class AlarmRepository(context: Context) {
         return saved
     }
 
+    // armedForEpochMs belongs to the scheduler; a copy read earlier must not roll it back.
     suspend fun update(alarm: Alarm) {
         store.updateData { current ->
-            current.copy(alarms = current.alarms.map { if (it.id == alarm.id) alarm else it })
+            current.copy(
+                alarms = current.alarms.map {
+                    if (it.id == alarm.id) alarm.copy(armedForEpochMs = it.armedForEpochMs) else it
+                },
+            )
         }
     }
 
@@ -47,7 +52,21 @@ class AlarmRepository(context: Context) {
         store.updateData { current ->
             current.copy(
                 alarms = current.alarms.map {
-                    if (it.id == id) it.copy(enabled = enabled, snoozedUntilEpochMs = null) else it
+                    if (it.id == id) {
+                        it.copy(enabled = enabled, snoozedUntilEpochMs = null, armedForEpochMs = null)
+                    } else {
+                        it
+                    }
+                },
+            )
+        }
+    }
+
+    suspend fun setArmedFor(id: Long, epochMs: Long?) {
+        store.updateData { current ->
+            current.copy(
+                alarms = current.alarms.map {
+                    if (it.id == id) it.copy(armedForEpochMs = epochMs) else it
                 },
             )
         }
