@@ -27,7 +27,8 @@ import kotlinx.coroutines.runBlocking
 
 /**
  * Keeps the watch vibrating while an alarm rings. Runs as a `systemExempted` foreground
- * service, which exact-alarm apps may start from the background even after boot.
+ * service, which an exact alarm's delivery may start from the background even after boot.
+ * Other receivers (BOOT_COMPLETED, MY_PACKAGE_REPLACED) may not, so go through AlarmManager.
  */
 class RingService : Service() {
     private val app get() = application as LarkApplication
