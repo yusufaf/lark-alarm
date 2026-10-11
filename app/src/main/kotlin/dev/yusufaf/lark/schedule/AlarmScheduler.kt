@@ -5,7 +5,6 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.util.Log
-import androidx.core.content.ContextCompat
 import dev.yusufaf.lark.MainActivity
 import dev.yusufaf.lark.data.AlarmRepository
 import dev.yusufaf.lark.core.Alarm
@@ -13,7 +12,6 @@ import dev.yusufaf.lark.core.MISSED_GRACE
 import dev.yusufaf.lark.core.RescheduleAction
 import dev.yusufaf.lark.core.nextTrigger
 import dev.yusufaf.lark.core.rescheduleAction
-import dev.yusufaf.lark.ring.RingService
 import java.time.Instant
 import java.time.ZonedDateTime
 
@@ -74,14 +72,20 @@ class AlarmScheduler(private val context: Context, private val repository: Alarm
         }
     }
 
-    // Exact-alarm apps are exempt from the background foreground-service-start limits, and
-    // systemExempted isn't among the types Android 15 bars from BOOT_COMPLETED, so this
-    // works from every BootReceiver action. RingService's finishRing then disables or
-    // re-arms the alarm as for an on-time ring, so armedFor stays as is until then.
+    // Starting RingService from here is denied ("Background started FGS: Disallowed" on the
+    // watch, #21): the exemption belongs to an exact alarm's own delivery, not to the
+    // BOOT_COMPLETED / MY_PACKAGE_REPLACED receiver. So fire it through AlarmManager like
+    // an on-time ring. armedFor stays at the original instant, which keeps MISSED_GRACE
+    // bounding the lateness if the process dies before this alarm goes off; RingService's
+    // finishRing then disables or re-arms the alarm as usual.
     private fun ringLate(alarm: Alarm, now: ZonedDateTime) {
-        val lateMs = now.toInstant().toEpochMilli() - (alarm.armedForEpochMs ?: 0)
+        val nowMs = now.toInstant().toEpochMilli()
+        val lateMs = nowMs - (alarm.armedForEpochMs ?: nowMs)
         Log.i(TAG, "alarm ${alarm.id} passed unseen ${lateMs / 1000}s ago (armed for ${armedFor(alarm, now)}); ringing late")
-        ContextCompat.startForegroundService(context, RingService.ringIntent(context, alarm.id))
+        alarmManager.setAlarmClock(
+            AlarmManager.AlarmClockInfo(nowMs + LATE_RING_DELAY_MS, showIntent()),
+            fireIntent(alarm.id),
+        )
     }
 
     private fun armedFor(alarm: Alarm, now: ZonedDateTime) =
@@ -106,6 +110,7 @@ class AlarmScheduler(private val context: Context, private val repository: Alarm
 
     companion object {
         const val TAG = "Lark"
+        private const val LATE_RING_DELAY_MS = 1_000L
         const val ACTION_FIRE = "dev.yusufaf.lark.action.FIRE"
         const val EXTRA_ALARM_ID = "alarm_id"
     }
