@@ -55,32 +55,42 @@ object AlarmNotifications {
      * One notification per alarm, keyed by (tag, id): a repeat miss replaces the old one and
      * it cannot collide with [RINGING_ID]. No category, so it is not let through DND as an
      * alarm: it records a past event.
+     *
+     * Best effort: callers go on to re-arm or disable the alarm, and a failure to tell the
+     * user must not stop that.
      */
     fun postMissed(context: Context, alarm: Alarm) {
-        val open = PendingIntent.getActivity(
-            context,
-            0,
-            Intent(context, MainActivity::class.java),
-            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
-        )
-        val notification = NotificationCompat.Builder(context, MISSED_CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_notification)
-            .setContentTitle("Missed alarm")
-            .setContentText(alarm.missedText())
-            .setWhen(alarm.armedForEpochMs ?: System.currentTimeMillis())
-            .setShowWhen(true)
-            .setAutoCancel(true)
-            // Standalone by design: never bridge to a paired phone.
-            .setLocalOnly(true)
-            .setContentIntent(open)
-            .build()
-        val manager = context.getSystemService(NotificationManager::class.java)
-        // Posting without POST_NOTIFICATIONS is dropped silently (#22); leave a trace.
-        if (!manager.areNotificationsEnabled()) {
-            Log.w(AlarmScheduler.TAG, "notifications blocked; missed alarm ${alarm.id} not shown")
-            return
+        try {
+            val manager = context.getSystemService(NotificationManager::class.java)
+            // Posting without POST_NOTIFICATIONS, or into a blocked channel, is dropped
+            // silently (#22); leave a trace.
+            val channelBlocked =
+                manager.getNotificationChannel(MISSED_CHANNEL_ID)?.importance == NotificationManager.IMPORTANCE_NONE
+            if (!manager.areNotificationsEnabled() || channelBlocked) {
+                Log.w(AlarmScheduler.TAG, "notifications blocked; missed alarm ${alarm.id} not shown")
+                return
+            }
+            val open = PendingIntent.getActivity(
+                context,
+                0,
+                Intent(context, MainActivity::class.java),
+                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+            )
+            val notification = NotificationCompat.Builder(context, MISSED_CHANNEL_ID)
+                .setSmallIcon(R.drawable.ic_notification)
+                .setContentTitle("Missed alarm")
+                .setContentText(alarm.missedText())
+                .setWhen(alarm.armedForEpochMs ?: System.currentTimeMillis())
+                .setShowWhen(true)
+                .setAutoCancel(true)
+                // Standalone by design: never bridge to a paired phone.
+                .setLocalOnly(true)
+                .setContentIntent(open)
+                .build()
+            manager.notify(MISSED_TAG, alarm.id.toInt(), notification)
+        } catch (e: Exception) {
+            Log.e(AlarmScheduler.TAG, "failed to post missed alarm ${alarm.id}", e)
         }
-        manager.notify(MISSED_TAG, alarm.id.toInt(), notification)
     }
 
     fun ringing(context: Context, alarm: Alarm?): Notification {
