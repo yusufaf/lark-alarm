@@ -12,6 +12,7 @@ import dev.yusufaf.lark.core.MISSED_GRACE
 import dev.yusufaf.lark.core.RescheduleAction
 import dev.yusufaf.lark.core.nextTrigger
 import dev.yusufaf.lark.core.rescheduleAction
+import dev.yusufaf.lark.ring.AlarmNotifications
 import dev.yusufaf.lark.ring.RingService
 import kotlinx.coroutines.CancellationException
 import java.time.Instant
@@ -50,8 +51,8 @@ class AlarmScheduler(private val context: Context, private val repository: Alarm
     /**
      * Re-arms every alarm from persisted state (boot, time change, app update). A trigger
      * that passed while nothing was armed (watch off, slow BOOT_COMPLETED, process killed
-     * mid-ring) rings late within [MISSED_GRACE] and is otherwise missed, instead of
-     * rolling a one-shot over to tomorrow.
+     * mid-ring) rings late within [MISSED_GRACE] and is otherwise reported missed
+     * (a notification), instead of rolling a one-shot over to tomorrow.
      *
      * [alarmsLost] is true when AlarmManager may have dropped its alarms (boot, app update).
      * After a clock or zone change they are intact, so a trigger already in the past is
@@ -82,13 +83,13 @@ class AlarmScheduler(private val context: Context, private val repository: Alarm
             RescheduleAction.RingNow -> ringLate(alarm, now)
             RescheduleAction.Disable -> {
                 Log.i(TAG, "alarm ${alarm.id} missed (armed for ${armedFor(alarm, now)}); disabling")
-                // TODO(#12): post the missed-alarm notification.
+                AlarmNotifications.postMissed(context, alarm)
                 repository.setEnabled(alarm.id, false)
                 cancel(alarm.id)
             }
             RescheduleAction.SkipToNext -> {
                 Log.i(TAG, "alarm ${alarm.id} missed (armed for ${armedFor(alarm, now)}); skipping to next")
-                // TODO(#12): post the missed-alarm notification.
+                AlarmNotifications.postMissed(context, alarm)
                 schedule(alarm, now)
             }
         }
