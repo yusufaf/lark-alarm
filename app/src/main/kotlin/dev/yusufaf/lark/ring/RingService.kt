@@ -33,7 +33,7 @@ import kotlinx.coroutines.runBlocking
 class RingService : Service() {
     private val app get() = application as LarkApplication
     private val handler = Handler(Looper.getMainLooper())
-    private val autoStop = Runnable { finishRing(reason = "timeout") }
+    private val autoStop = Runnable { finishRing(reason = "timeout", missed = true) }
 
     private var vibrator: Vibrator? = null
     private var wakeLock: PowerManager.WakeLock? = null
@@ -121,13 +121,17 @@ class RingService : Service() {
         }
     }
 
-    private fun finishRing(reason: String) {
+    private fun finishRing(reason: String, missed: Boolean = false) {
         val ringing = alarm ?: return promoteAndStop()
         Log.i(AlarmScheduler.TAG, "alarm ${ringing.id} stopped: $reason")
         handler.removeCallbacks(autoStop)
         stopRingEffects()
         alarm = null
         _ringingAlarmId.value = null
+        // Before the re-arm: its store writes block, and if the process dies during them the
+        // user should still see the miss. A later boot reclassification re-posts under the
+        // same (tag, id), so it does not duplicate.
+        if (missed) AlarmNotifications.postMissed(this, ringing)
         rearmAfterRing(ringing)
         ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
         stopSelf()

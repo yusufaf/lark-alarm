@@ -18,6 +18,6 @@ class LarkApplication : Application() {
 
     override fun onCreate() {
         super.onCreate()
-        AlarmNotifications.ensureChannel(this)
+        AlarmNotifications.ensureChannels(this)
     }
 }
