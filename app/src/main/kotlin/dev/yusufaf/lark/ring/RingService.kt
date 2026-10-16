@@ -106,6 +106,13 @@ class RingService : Service() {
         screenOffRegistered = true
         _ringingAlarmId.value = id
         handler.postDelayed(autoStop, RING_TIMEOUT_MS)
+
+        // Diagnostic only: a failure here must not take down a ring that is already going.
+        val blocked = runCatching { AlarmNotifications.blocked(this, AlarmNotifications.CHANNEL_ID) }
+            .getOrDefault(false)
+        if (blocked) {
+            Log.w(AlarmScheduler.TAG, "notifications blocked; alarm $id rings with no notification, open Lark to dismiss")
+        }
     }
 
     private fun vibrate(vibrator: Vibrator) {
@@ -190,7 +197,10 @@ class RingService : Service() {
 
         private val _ringingAlarmId = MutableStateFlow<Long?>(null)
 
-        /** Id of the alarm currently ringing, or null; [RingActivity] closes when it clears. */
+        /**
+         * Id of the alarm currently ringing, or null; [RingActivity] closes when it clears,
+         * and [dev.yusufaf.lark.MainActivity] opens RingActivity while it is set.
+         */
         val ringingAlarmId: StateFlow<Long?> = _ringingAlarmId
 
         fun ringIntent(context: Context, id: Long): Intent =

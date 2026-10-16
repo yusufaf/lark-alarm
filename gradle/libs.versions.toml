@@ -4,6 +4,7 @@ kotlin = "2.4.10"
 
 androidxActivity = "1.13.0"
 androidxCore = "1.18.0"
+androidxLifecycle = "2.10.0"
 androidxWearCompose = "1.6.2"
 androidxComposeUi = "1.9.4"
 androidxComposeMaterialIcons = "1.7.8"
@@ -22,6 +23,7 @@ kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", versi
 [libraries]
 androidx-activity-compose = { module = "androidx.activity:activity-compose", version.ref = "androidxActivity" }
 androidx-core-ktx = { module = "androidx.core:core-ktx", version.ref = "androidxCore" }
+androidx-lifecycle-runtime = { module = "androidx.lifecycle:lifecycle-runtime", version.ref = "androidxLifecycle" }
 androidx-compose-ui-tooling-preview = { module = "androidx.compose.ui:ui-tooling-preview", version.ref = "androidxComposeUi" }
 androidx-compose-material-icons-core = { module = "androidx.compose.material:material-icons-core", version.ref = "androidxComposeMaterialIcons" }
 androidx-wear-compose-foundation = { module = "androidx.wear.compose:compose-foundation", version.ref = "androidxWearCompose" }

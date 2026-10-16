@@ -20,6 +20,9 @@ import dev.yusufaf.lark.schedule.AlarmScheduler
  * The ringing notification is the alarm surface on Wear OS (full-screen intents are not
  * supported there): it carries the Dismiss action and opens [RingActivity] on tap.
  * The missed notification is the record left when an alarm went unanswered.
+ *
+ * When notifications are blocked ([blocked]) the ring has no notification, so opening Lark
+ * is the fallback route to [RingActivity] and its Dismiss button.
  */
 object AlarmNotifications {
     const val CHANNEL_ID = "alarm"
@@ -52,6 +55,16 @@ object AlarmNotifications {
     }
 
     /**
+     * True when the system drops what Lark posts on [channelId]: POST_NOTIFICATIONS revoked
+     * (Samsung Sleep mode does this, #22), the app blocked, or the channel turned off.
+     */
+    fun blocked(context: Context, channelId: String): Boolean {
+        val manager = context.getSystemService(NotificationManager::class.java)
+        return !manager.areNotificationsEnabled() ||
+            manager.getNotificationChannel(channelId)?.importance == NotificationManager.IMPORTANCE_NONE
+    }
+
+    /**
      * One notification per alarm, keyed by (tag, id): a repeat miss replaces the old one and
      * it cannot collide with [RINGING_ID]. No category, so it is not let through DND as an
      * alarm: it records a past event.
@@ -61,15 +74,12 @@ object AlarmNotifications {
      */
     fun postMissed(context: Context, alarm: Alarm) {
         try {
-            val manager = context.getSystemService(NotificationManager::class.java)
-            // Posting without POST_NOTIFICATIONS, or into a blocked channel, is dropped
-            // silently (#22); leave a trace.
-            val channelBlocked =
-                manager.getNotificationChannel(MISSED_CHANNEL_ID)?.importance == NotificationManager.IMPORTANCE_NONE
-            if (!manager.areNotificationsEnabled() || channelBlocked) {
+            // A blocked post is dropped silently (#22); leave a trace.
+            if (blocked(context, MISSED_CHANNEL_ID)) {
                 Log.w(AlarmScheduler.TAG, "notifications blocked; missed alarm ${alarm.id} not shown")
                 return
             }
+            val manager = context.getSystemService(NotificationManager::class.java)
             val open = PendingIntent.getActivity(
                 context,
                 0,
