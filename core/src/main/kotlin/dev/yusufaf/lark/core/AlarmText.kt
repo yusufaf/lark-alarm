@@ -12,8 +12,7 @@ fun Alarm.timeText(locale: Locale = Locale.getDefault()): String =
 
 fun Alarm.title(): String = label.takeIf { it.isNotBlank() } ?: "Alarm"
 
-fun Alarm.missedText(locale: Locale = Locale.getDefault()): String =
-    if (label.isBlank()) timeText(locale) else "$label · ${timeText(locale)}"
+fun Alarm.missedText(locale: Locale = Locale.getDefault()): String = withLabel(timeText(locale))
 
 /** Repeat days as short names, ordered from the locale's first day of the week. */
 fun Alarm.daysText(locale: Locale = Locale.getDefault()): String = when (days.size) {
@@ -25,5 +24,6 @@ fun Alarm.daysText(locale: Locale = Locale.getDefault()): String = when (days.si
         .joinToString(", ") { it.getDisplayName(TextStyle.SHORT, locale) }
 }
 
-fun Alarm.listSubtitle(locale: Locale = Locale.getDefault()): String =
-    if (label.isBlank()) daysText(locale) else "$label · ${daysText(locale)}"
+fun Alarm.listSubtitle(locale: Locale = Locale.getDefault()): String = withLabel(daysText(locale))
+
+private fun Alarm.withLabel(text: String): String = if (label.isBlank()) text else "$label · $text"
