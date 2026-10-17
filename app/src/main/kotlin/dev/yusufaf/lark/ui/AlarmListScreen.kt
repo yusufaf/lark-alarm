@@ -106,7 +106,7 @@ fun AlarmListScreen(
                 SplitSwitchButton(
                     checked = alarm.enabled,
                     onCheckedChange = { onToggle(alarm, it) },
-                    toggleContentDescription = "${alarm.timeText()} alarm",
+                    toggleContentDescription = "${alarm.timeText()}, ${alarm.listSubtitle()}",
                     onContainerClick = { onOpen(alarm) },
                     containerClickLabel = "Edit",
                     modifier = Modifier
