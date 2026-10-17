@@ -15,6 +15,7 @@ import android.os.PowerManager
 import android.os.VibrationAttributes
 import android.os.VibrationEffect
 import android.os.Vibrator
+import android.provider.Settings
 import android.util.Log
 import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
@@ -89,8 +90,9 @@ class RingService : Service() {
         wakeLock = power.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "Lark:ring").also {
             it.acquire(RING_TIMEOUT_MS + 60_000)
         }
-        // Wear OS has no full-screen intents and the alarm notification does not wake the
-        // screen on its own (verified on a Galaxy Watch 4, #6), so turn it on ourselves.
+        // The alarm notification does not wake the screen on its own (verified on a Galaxy
+        // Watch 4, #6), and a full-screen intent is blocked from opening anything (#29), so
+        // turn it on ourselves.
         @Suppress("DEPRECATION")
         screenWakeLock = power.newWakeLock(
             PowerManager.SCREEN_BRIGHT_WAKE_LOCK or PowerManager.ACQUIRE_CAUSES_WAKEUP,
@@ -106,12 +108,30 @@ class RingService : Service() {
         screenOffRegistered = true
         _ringingAlarmId.value = id
         handler.postDelayed(autoStop, RING_TIMEOUT_MS)
+        // After ringingAlarmId is set: RingActivity closes as soon as it sees no ring.
+        openRingScreen(id)
 
         // Diagnostic only: a failure here must not take down a ring that is already going.
         val blocked = runCatching { AlarmNotifications.blocked(this, AlarmNotifications.CHANNEL_ID) }
             .getOrDefault(false)
         if (blocked) {
-            Log.w(AlarmScheduler.TAG, "notifications blocked; alarm $id rings with no notification, open Lark to dismiss")
+            Log.w(AlarmScheduler.TAG, "notifications blocked; alarm $id rings with no notification, dismiss from the ring screen or open Lark")
+        }
+    }
+
+    // Starts from a service are background activity starts, foreground service or not, and
+    // are blocked unless Lark holds SYSTEM_ALERT_WINDOW (#29, measured on a Galaxy Watch 4;
+    // an activity PendingIntent fired by AlarmManager is blocked too). Without it the ring
+    // notification and opening Lark stay the ways to Dismiss.
+    private fun openRingScreen(id: Long) {
+        if (!Settings.canDrawOverlays(this)) {
+            Log.w(AlarmScheduler.TAG, "no SYSTEM_ALERT_WINDOW; ring screen not opened for alarm $id")
+            return
+        }
+        try {
+            startActivity(RingActivity.intent(this, id).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        } catch (e: Exception) {
+            Log.e(AlarmScheduler.TAG, "failed to open ring screen for alarm $id", e)
         }
     }
 

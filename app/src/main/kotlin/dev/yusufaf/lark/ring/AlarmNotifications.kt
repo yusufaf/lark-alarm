@@ -17,12 +17,15 @@ import dev.yusufaf.lark.core.title
 import dev.yusufaf.lark.schedule.AlarmScheduler
 
 /**
- * The ringing notification is the alarm surface on Wear OS (full-screen intents are not
- * supported there): it carries the Dismiss action and opens [RingActivity] on tap.
+ * The ringing notification carries the Dismiss action and opens [RingActivity] on tap. It is
+ * the alarm surface when Lark lacks SYSTEM_ALERT_WINDOW, since [RingService] then cannot open
+ * RingActivity itself. A full-screen intent is no substitute: Wear's System UI tries it, but
+ * the background-activity-start rules block it (Galaxy Watch 4, #29).
  * The missed notification is the record left when an alarm went unanswered.
  *
- * When notifications are blocked ([blocked]) the ring has no notification, so opening Lark
- * is the fallback route to [RingActivity] and its Dismiss button.
+ * When notifications are blocked ([blocked]) the ring has no notification, so without
+ * SYSTEM_ALERT_WINDOW opening Lark is the fallback route to [RingActivity] and its Dismiss
+ * button.
  */
 object AlarmNotifications {
     const val CHANNEL_ID = "alarm"

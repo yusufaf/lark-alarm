@@ -54,6 +54,13 @@ Install on a watch or Wear OS emulator over ADB:
 adb install app/build/outputs/apk/debug/app-debug.apk
 ```
 
+To let the ring screen open on its own when an alarm fires (Android blocks background
+activity starts otherwise, and the watch has no settings page for this):
+
+```
+adb shell appops set dev.yusufaf.lark SYSTEM_ALERT_WINDOW allow
+```
+
 ## Tech
 
 - Kotlin, Compose for Wear OS Material 3 (`androidx.wear.compose.material3`)
