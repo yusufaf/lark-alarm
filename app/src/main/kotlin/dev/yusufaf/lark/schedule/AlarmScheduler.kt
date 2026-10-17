@@ -47,8 +47,6 @@ class AlarmScheduler(private val context: Context, private val repository: Alarm
 
     /** Persists the switch, then arms or cancels to match. Serialised so rapid toggles can't leave a disabled alarm armed. */
     suspend fun setEnabled(id: Long, enabled: Boolean) = toggleLock.withLock {
-        // A repeated tap from a list that hasn't caught up yet; persisting would clear a snooze.
-        if (repository.get(id)?.enabled == enabled) return@withLock
         repository.setEnabled(id, enabled)
         val alarm = repository.get(id)
         if (alarm != null && alarm.enabled) schedule(alarm) else cancel(id)

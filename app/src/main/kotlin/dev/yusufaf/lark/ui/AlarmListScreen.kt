@@ -30,8 +30,10 @@ import androidx.wear.compose.material3.lazy.rememberTransformationSpec
 import androidx.wear.compose.material3.lazy.transformedHeight
 import dev.yusufaf.lark.core.Alarm
 import dev.yusufaf.lark.core.AlarmListOrder
+import dev.yusufaf.lark.core.daysText
 import dev.yusufaf.lark.core.listSubtitle
 import dev.yusufaf.lark.core.timeText
+import dev.yusufaf.lark.core.title
 
 /** [alarms] is null until the store first loads, so a cold start doesn't flash the empty state. */
 @Composable
@@ -106,7 +108,7 @@ fun AlarmListScreen(
                 SplitSwitchButton(
                     checked = alarm.enabled,
                     onCheckedChange = { onToggle(alarm, it) },
-                    toggleContentDescription = "${alarm.timeText()}, ${alarm.listSubtitle()}",
+                    toggleContentDescription = "${alarm.timeText()} ${alarm.title()}, ${alarm.daysText()}",
                     onContainerClick = { onOpen(alarm) },
                     containerClickLabel = "Edit",
                     modifier = Modifier
