@@ -15,6 +15,8 @@ import dev.yusufaf.lark.core.rescheduleAction
 import dev.yusufaf.lark.ring.AlarmNotifications
 import dev.yusufaf.lark.ring.RingService
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import java.time.Instant
 import java.time.ZonedDateTime
 
@@ -24,6 +26,7 @@ import java.time.ZonedDateTime
  */
 class AlarmScheduler(private val context: Context, private val repository: AlarmRepository) {
     private val alarmManager = context.getSystemService(AlarmManager::class.java)
+    private val toggleLock = Mutex()
 
     suspend fun schedule(alarm: Alarm, now: ZonedDateTime = ZonedDateTime.now()) {
         val trigger = alarm.nextTrigger(now)
@@ -40,6 +43,13 @@ class AlarmScheduler(private val context: Context, private val repository: Alarm
             fireIntent(alarm.id),
         )
         Log.i(TAG, "scheduled alarm ${alarm.id} for $trigger")
+    }
+
+    /** Persists the switch, then arms or cancels to match. Serialised so rapid toggles can't leave a disabled alarm armed. */
+    suspend fun setEnabled(id: Long, enabled: Boolean) = toggleLock.withLock {
+        repository.setEnabled(id, enabled)
+        val alarm = repository.get(id)
+        if (alarm != null && alarm.enabled) schedule(alarm) else cancel(id)
     }
 
     suspend fun cancel(id: Long) {
