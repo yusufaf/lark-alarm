@@ -109,13 +109,14 @@ class RingService : Service() {
         _ringingAlarmId.value = id
         handler.postDelayed(autoStop, RING_TIMEOUT_MS)
         // After ringingAlarmId is set: RingActivity closes as soon as it sees no ring.
-        openRingScreen(id)
+        val screenOpened = openRingScreen(id)
 
         // Diagnostic only: a failure here must not take down a ring that is already going.
         val blocked = runCatching { AlarmNotifications.blocked(this, AlarmNotifications.CHANNEL_ID) }
             .getOrDefault(false)
         if (blocked) {
-            Log.w(AlarmScheduler.TAG, "notifications blocked; alarm $id rings with no notification, open Lark to dismiss")
+            val hint = if (screenOpened) "ring screen opened" else "open Lark to dismiss"
+            Log.w(AlarmScheduler.TAG, "notifications blocked; alarm $id rings with no notification, $hint")
         }
     }
 
@@ -123,15 +124,17 @@ class RingService : Service() {
     // are blocked unless Lark holds SYSTEM_ALERT_WINDOW (#29, measured on a Galaxy Watch 4;
     // an activity PendingIntent fired by AlarmManager is blocked too). Without it the ring
     // notification and opening Lark stay the ways to Dismiss.
-    private fun openRingScreen(id: Long) {
+    private fun openRingScreen(id: Long): Boolean {
         if (!Settings.canDrawOverlays(this)) {
             Log.w(AlarmScheduler.TAG, "no SYSTEM_ALERT_WINDOW; ring screen not opened for alarm $id")
-            return
+            return false
         }
-        try {
+        return try {
             startActivity(RingActivity.intent(this, id).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            true
         } catch (e: Exception) {
             Log.e(AlarmScheduler.TAG, "failed to open ring screen for alarm $id", e)
+            false
         }
     }
 
