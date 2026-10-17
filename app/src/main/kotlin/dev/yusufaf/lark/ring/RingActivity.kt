@@ -31,9 +31,10 @@ import kotlinx.coroutines.runBlocking
 import java.util.Locale
 
 /**
- * Shown while an alarm rings, via the notification's content intent or by opening Lark
- * mid-ring (the only route when notifications are blocked, #22). Deliberately has no
- * swipe-to-dismiss: only the button (or the notification action) silences the alarm.
+ * Shown while an alarm rings. [RingService] opens it when the ring starts, if Lark holds
+ * SYSTEM_ALERT_WINDOW (#29); otherwise the notification's content intent or opening Lark
+ * mid-ring (the only route when notifications are blocked, #22) lead here. Deliberately has
+ * no swipe-to-dismiss: only the button (or the notification action) silences the alarm.
  */
 class RingActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
