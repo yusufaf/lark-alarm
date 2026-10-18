@@ -70,9 +70,11 @@ class RingService : Service() {
         // the receiver's startForegroundService() call, whatever the file read does.
         promote(alarm)
         val loaded = runBlocking { app.repository.get(id) }
-        if (alarm?.id == id) {
+        if (alarm?.id == id && loaded?.armedForEpochMs == alarm?.armedForEpochMs) {
             // A late ring of this same alarm, armed by a reschedule before ringingAlarmId was
-            // set (#25). Its own finishRing settles it; settling here would turn Snooze into Keep.
+            // set (#25); ringLate leaves armedFor alone. Its own finishRing settles it, and
+            // settling here would turn Snooze into Keep. A fire after a mid-ring save has a
+            // new armedFor and is handled below like any second alarm.
             Log.i(AlarmScheduler.TAG, "alarm $id fired again while ringing; ignoring")
             return
         }
