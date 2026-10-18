@@ -140,7 +140,6 @@ private fun EditAlarmContent(initial: Alarm, isNew: Boolean, onSave: (Alarm) -> 
                     checked = draft.sound,
                     onCheckedChange = { draft = draft.copy(sound = it) },
                     label = { Text("Sound") },
-                    secondaryLabel = { Text(if (draft.sound) "Alarm tone" else "Vibrate only") },
                     modifier = Modifier
                         .fillMaxWidth()
                         .transformedHeight(this, spec)

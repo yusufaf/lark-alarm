@@ -27,8 +27,9 @@ import java.time.ZonedDateTime
  */
 class AlarmScheduler(private val context: Context, private val repository: AlarmRepository) {
     private val alarmManager = context.getSystemService(AlarmManager::class.java)
-    // Serialises toggles, saves, deletes and rescheduleAll so none can leave an alarm armed
-    // against its stored state. rearmAfterRing stays outside: it runs in runBlocking on the main thread.
+    // Serialises toggles, saves, deletes and rescheduleAll against each other, so none acts on
+    // a copy another has just changed. RingService's rearmAfterRing stays outside: it runs in
+    // runBlocking on the main thread.
     private val editLock = Mutex()
 
     suspend fun schedule(alarm: Alarm, now: ZonedDateTime = ZonedDateTime.now()) {

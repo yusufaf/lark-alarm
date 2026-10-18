@@ -126,6 +126,7 @@ private fun LarkApp(app: LarkApplication, notificationsBlocked: Boolean, onFixNo
                     )
                 }
                 entry<EditAlarm> { key ->
+                    val isNew = key.id == null
                     val close = { if (backStack.lastOrNull() == key) backStack.removeLastOrNull() }
                     val initial by produceState<Alarm?>(null, key) {
                         value = if (key.id == null) {
@@ -136,12 +137,10 @@ private fun LarkApp(app: LarkApplication, notificationsBlocked: Boolean, onFixNo
                     }
                     EditAlarmScreen(
                         initial = initial,
-                        isNew = key.id == null,
+                        isNew = isNew,
                         // Process scope for the same reason as onToggle.
                         onSave = { alarm ->
-                            app.scope.launch(start = CoroutineStart.UNDISPATCHED) {
-                                app.scheduler.save(alarm, isNew = key.id == null)
-                            }
+                            app.scope.launch(start = CoroutineStart.UNDISPATCHED) { app.scheduler.save(alarm, isNew) }
                             close()
                         },
                         onDelete = {
