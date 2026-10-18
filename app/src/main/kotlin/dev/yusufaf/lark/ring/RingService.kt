@@ -43,7 +43,7 @@ class RingService : Service() {
 
     // The system cancels app vibrations when the screen is turned off by the user, and
     // Samsung's wrist-down gesture counts as that, so a ring the screen wake-up made
-    // visible would go silent a few seconds later. Only Dismiss or the timeout may stop it.
+    // visible would go silent a few seconds later. Only Dismiss, Snooze or the timeout may stop it.
     private val screenOffReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
             Log.i(AlarmScheduler.TAG, "screen off mid-ring; restarting vibration")
@@ -58,6 +58,7 @@ class RingService : Service() {
         when (intent?.action) {
             ACTION_RING -> startRinging(intent.getLongExtra(AlarmScheduler.EXTRA_ALARM_ID, -1))
             ACTION_DISMISS -> finishRing(RingEnd.Dismissed)
+            ACTION_SNOOZE -> finishRing(RingEnd.Snoozed)
             // Restarted by the system with no intent: nothing to ring, go away quietly.
             else -> promoteAndStop()
         }
@@ -122,7 +123,7 @@ class RingService : Service() {
     // Starts from a service are background activity starts, foreground service or not, and
     // are blocked unless Lark holds SYSTEM_ALERT_WINDOW (#29, measured on a Galaxy Watch 4;
     // an activity PendingIntent fired by AlarmManager is blocked too). Without it the ring
-    // notification and opening Lark stay the ways to Dismiss.
+    // notification and opening Lark stay the ways to Dismiss or Snooze.
     private fun openRingScreen(id: Long) {
         if (!Settings.canDrawOverlays(this)) {
             Log.w(AlarmScheduler.TAG, "no SYSTEM_ALERT_WINDOW; ring screen not opened for alarm $id")
@@ -217,6 +218,7 @@ class RingService : Service() {
     companion object {
         const val ACTION_RING = "dev.yusufaf.lark.action.RING"
         const val ACTION_DISMISS = "dev.yusufaf.lark.action.DISMISS"
+        const val ACTION_SNOOZE = "dev.yusufaf.lark.action.SNOOZE"
         const val RING_TIMEOUT_MS = 5 * 60_000L
 
         private val _ringingAlarmId = MutableStateFlow<Long?>(null)
@@ -234,5 +236,8 @@ class RingService : Service() {
 
         fun dismissIntent(context: Context): Intent =
             Intent(context, RingService::class.java).setAction(ACTION_DISMISS)
+
+        fun snoozeIntent(context: Context): Intent =
+            Intent(context, RingService::class.java).setAction(ACTION_SNOOZE)
     }
 }

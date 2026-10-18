@@ -95,7 +95,7 @@ class MainActivity : ComponentActivity() {
 @Composable
 private fun LarkApp(app: LarkApplication, notificationsBlocked: Boolean, onFixNotifications: () -> Unit) {
     // Not mid-ring: the system prompt would race RingActivity for the foreground. It shows
-    // on return after Dismiss.
+    // on return after Dismiss or Snooze.
     val ringing by RingService.ringingAlarmId.collectAsState()
     if (ringing == null) NotificationPermissionRequest()
     val backStack = rememberNavBackStack(AlarmList)

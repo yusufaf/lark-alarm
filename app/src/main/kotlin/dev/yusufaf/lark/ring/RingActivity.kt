@@ -21,6 +21,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.wear.compose.material3.AppScaffold
 import androidx.wear.compose.material3.EdgeButton
+import androidx.wear.compose.material3.FilledTonalButton
 import androidx.wear.compose.material3.MaterialTheme
 import androidx.wear.compose.material3.ScreenScaffold
 import androidx.wear.compose.material3.Text
@@ -34,7 +35,7 @@ import java.util.Locale
  * Shown while an alarm rings. [RingService] opens it when the ring starts, if Lark holds
  * SYSTEM_ALERT_WINDOW (#29); otherwise the notification's content intent or opening Lark
  * mid-ring (the only route when notifications are blocked, #22) lead here. Deliberately has
- * no swipe-to-dismiss: only the button (or the notification action) silences the alarm.
+ * no swipe-to-dismiss: only the buttons (or the notification actions) silence the alarm.
  */
 class RingActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -48,14 +49,18 @@ class RingActivity : ComponentActivity() {
 
         setContent {
             MaterialTheme {
-                RingScreen(alarm = alarm, onDismiss = ::dismiss)
+                RingScreen(alarm = alarm, onDismiss = ::dismiss, onSnooze = ::snooze)
             }
         }
     }
 
+    // The service is already in the foreground, so a plain start is allowed here.
     private fun dismiss() {
-        // The service is already in the foreground, so a plain start is allowed here.
         startService(RingService.dismissIntent(this))
+    }
+
+    private fun snooze() {
+        startService(RingService.snoozeIntent(this))
     }
 
     companion object {
@@ -65,7 +70,7 @@ class RingActivity : ComponentActivity() {
 }
 
 @Composable
-private fun RingScreen(alarm: Alarm?, onDismiss: () -> Unit) {
+private fun RingScreen(alarm: Alarm?, onDismiss: () -> Unit, onSnooze: () -> Unit) {
     val ringing by RingService.ringingAlarmId.collectAsState()
     val activity = LocalActivity.current
     LaunchedEffect(ringing) {
@@ -102,6 +107,9 @@ private fun RingScreen(alarm: Alarm?, onDismiss: () -> Unit) {
                         textAlign = TextAlign.Center,
                         modifier = Modifier.fillMaxWidth(),
                     )
+                }
+                FilledTonalButton(onClick = onSnooze, modifier = Modifier.fillMaxWidth()) {
+                    Text("Snooze")
                 }
                 EdgeButton(onClick = onDismiss) { Text("Dismiss") }
             }

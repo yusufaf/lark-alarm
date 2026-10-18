@@ -17,7 +17,7 @@ import dev.yusufaf.lark.core.title
 import dev.yusufaf.lark.schedule.AlarmScheduler
 
 /**
- * The ringing notification carries the Dismiss action and opens [RingActivity] on tap. It is
+ * The ringing notification carries the Dismiss and Snooze actions and opens [RingActivity] on tap. It is
  * the alarm surface when Lark lacks SYSTEM_ALERT_WINDOW, since [RingService] then cannot open
  * RingActivity itself. A full-screen intent is no substitute: Wear's System UI tries it, but
  * the background-activity-start rules block it (Galaxy Watch 4, #29).
@@ -25,7 +25,7 @@ import dev.yusufaf.lark.schedule.AlarmScheduler
  *
  * When notifications are blocked ([blocked]) the ring has no notification, so without
  * SYSTEM_ALERT_WINDOW opening Lark is the fallback route to [RingActivity] and its Dismiss
- * button.
+ * and Snooze buttons.
  */
 object AlarmNotifications {
     const val CHANNEL_ID = "alarm"
@@ -121,6 +121,12 @@ object AlarmNotifications {
             RingService.dismissIntent(context),
             flags,
         )
+        val snooze = PendingIntent.getForegroundService(
+            context,
+            0,
+            RingService.snoozeIntent(context),
+            flags,
+        )
         return NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle(alarm?.title() ?: "Alarm")
@@ -133,6 +139,7 @@ object AlarmNotifications {
             .setLocalOnly(true)
             .setContentIntent(open)
             .addAction(0, "Dismiss", dismiss)
+            .addAction(0, "Snooze", snooze)
             .build()
     }
 }
