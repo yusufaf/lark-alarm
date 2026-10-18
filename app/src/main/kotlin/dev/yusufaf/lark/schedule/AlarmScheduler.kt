@@ -30,8 +30,8 @@ class AlarmScheduler(private val context: Context, private val repository: Alarm
     // Serialises toggles, saves, deletes and rescheduleAll against each other, so none acts on
     // a copy another has just changed. RingService's rearmAfterRing stays outside: it runs in
     // runBlocking on the main thread, and works from the copy loaded when the ring started, so
-    // an edit of the ringing alarm would be lost. MainActivity sends the user to RingActivity
-    // while one rings, so the editor can't save then.
+    // a save, toggle or delete of the ringing alarm that lands mid-ring is overwritten on
+    // Dismiss. MainActivity's redirect to RingActivity narrows that window but does not close it.
     private val editLock = Mutex()
 
     suspend fun schedule(alarm: Alarm, now: ZonedDateTime = ZonedDateTime.now()) {
