@@ -34,7 +34,7 @@ import kotlinx.coroutines.runBlocking
 class RingService : Service() {
     private val app get() = application as LarkApplication
     private val handler = Handler(Looper.getMainLooper())
-    private val autoStop = Runnable { finishRing(reason = "timeout", missed = true) }
+    private val autoStop = Runnable { finishRing(RingEnd.TimedOut) }
 
     private var vibrator: Vibrator? = null
     private var wakeLock: PowerManager.WakeLock? = null
@@ -57,7 +57,7 @@ class RingService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             ACTION_RING -> startRinging(intent.getLongExtra(AlarmScheduler.EXTRA_ALARM_ID, -1))
-            ACTION_DISMISS -> finishRing(reason = "dismissed")
+            ACTION_DISMISS -> finishRing(RingEnd.Dismissed)
             // Restarted by the system with no intent: nothing to ring, go away quietly.
             else -> promoteAndStop()
         }
@@ -73,7 +73,7 @@ class RingService : Service() {
             // A second alarm fired mid-ring. The user is already being woken, so treat it
             // as rung rather than dropping it silently and leaving it un-armed.
             Log.i(AlarmScheduler.TAG, "alarm $id fired while ${alarm?.id} rings; re-arming it")
-            loaded?.let(::rearmAfterRing)
+            loaded?.let { settle(it, snooze = false) }
             return
         }
         promote(loaded)
@@ -148,32 +148,30 @@ class RingService : Service() {
         }
     }
 
-    private fun finishRing(reason: String, missed: Boolean = false) {
+    private fun finishRing(end: RingEnd) {
         val ringing = alarm ?: return promoteAndStop()
-        Log.i(AlarmScheduler.TAG, "alarm ${ringing.id} stopped: $reason")
+        Log.i(AlarmScheduler.TAG, "alarm ${ringing.id} stopped: ${end.reason}")
         handler.removeCallbacks(autoStop)
         stopRingEffects()
         alarm = null
-        _ringingAlarmId.value = null
-        // Before the re-arm: its store writes block, and if the process dies during them the
+        // Before settling: its store writes block, and if the process dies during them the
         // user should still see the miss. A later boot reclassification re-posts under the
         // same (tag, id), so it does not duplicate.
-        if (missed) AlarmNotifications.postMissed(this, ringing)
-        rearmAfterRing(ringing)
+        if (end == RingEnd.TimedOut) AlarmNotifications.postMissed(this, ringing)
+        settle(ringing, snooze = end == RingEnd.Snoozed)
+        // Only after settling: while the id is set, rescheduleAll skips this alarm, so it can't
+        // arm a late ring of it that would fire before settle's cancel (#25).
+        _ringingAlarmId.value = null
         ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
         stopSelf()
     }
 
-    // One-shots are spent; weekly alarms move to their next day. The writes are awaited
-    // because the process may be killed right after stopSelf(), and a lost one would leave
-    // the past armed-for instant behind, so the next reschedule would ring it again.
-    private fun rearmAfterRing(rung: Alarm) = runBlocking {
-        if (rung.days.isEmpty()) {
-            app.repository.setEnabled(rung.id, false)
-            app.scheduler.cancel(rung.id)
-        } else {
-            app.scheduler.schedule(rung)
-        }
+    // The scheduler settles the ring under its edit lock, from a fresh read, so an edit that
+    // landed mid-ring stands (AfterRing). The writes are awaited because the process may be
+    // killed right after stopSelf(), and a lost one would leave the past armed-for instant
+    // behind, so the next reschedule would ring it again.
+    private fun settle(rung: Alarm, snooze: Boolean) = runBlocking {
+        app.scheduler.settleRing(rung.id, rung.armedForEpochMs, snooze)
     }
 
     // Every start via startForegroundService() must be followed by startForeground(),
@@ -208,6 +206,12 @@ class RingService : Service() {
         vibrator?.cancel()
         screenWakeLock?.takeIf { it.isHeld }?.release()
         wakeLock?.takeIf { it.isHeld }?.release()
+    }
+
+    private enum class RingEnd(val reason: String) {
+        Dismissed("dismissed"),
+        Snoozed("snoozed"),
+        TimedOut("timeout"),
     }
 
     companion object {
