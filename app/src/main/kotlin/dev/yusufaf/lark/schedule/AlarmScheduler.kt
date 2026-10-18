@@ -85,12 +85,9 @@ class AlarmScheduler(private val context: Context, private val repository: Alarm
      * landed mid-ring stands (see [afterRing]). [armedAtRingStart] is the alarm's
      * [Alarm.armedForEpochMs] as loaded when the ring started; [snooze] is true for a Snooze press.
      */
-    suspend fun settleRing(
-        id: Long,
-        armedAtRingStart: Long?,
-        snooze: Boolean,
-        now: ZonedDateTime = ZonedDateTime.now(),
-    ) = editLock.withLock {
+    suspend fun settleRing(id: Long, armedAtRingStart: Long?, snooze: Boolean) = editLock.withLock {
+        // Read the clock only once the lock is held: a reschedule may have kept us waiting.
+        val now = ZonedDateTime.now()
         // Deleted mid-ring: delete() already cancelled it.
         val alarm = repository.get(id) ?: return@withLock
         when (alarm.afterRing(armedAtRingStart, snooze)) {

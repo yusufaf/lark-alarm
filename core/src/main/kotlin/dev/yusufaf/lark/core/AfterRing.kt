@@ -20,9 +20,8 @@ sealed interface AfterRing {
 
 /**
  * Called on the alarm as stored when the ring ends. [armedAtRingStart] is [Alarm.armedForEpochMs]
- * as loaded when the ring started. An edit, toggle or save mid-ring changes it, and so does a
- * late ring of this same alarm that a reschedule armed before the ring was marked as ringing
- * (#25); either way the stored alarm stands.
+ * as loaded when the ring started. Only an edit, toggle or save mid-ring changes it, and then
+ * the stored alarm stands.
  */
 fun Alarm.afterRing(armedAtRingStart: Long?, snooze: Boolean): AfterRing = when {
     // Disabled covers a switch-off of a legacy alarm, whose armedForEpochMs was already null.

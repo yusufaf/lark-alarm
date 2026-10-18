@@ -70,6 +70,12 @@ class RingService : Service() {
         // the receiver's startForegroundService() call, whatever the file read does.
         promote(alarm)
         val loaded = runBlocking { app.repository.get(id) }
+        if (alarm?.id == id) {
+            // A late ring of this same alarm, armed by a reschedule before ringingAlarmId was
+            // set (#25). Its own finishRing settles it; settling here would turn Snooze into Keep.
+            Log.i(AlarmScheduler.TAG, "alarm $id fired again while ringing; ignoring")
+            return
+        }
         if (alarm != null) {
             // A second alarm fired mid-ring. The user is already being woken, so treat it
             // as rung rather than dropping it silently and leaving it un-armed.
