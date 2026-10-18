@@ -112,7 +112,7 @@ private fun LarkApp(app: LarkApplication, notificationsBlocked: Boolean, onFixNo
                         onFixNotifications = onFixNotifications,
                         onToggle = { alarm, on ->
                             // Process scope, so leaving the list can't cancel between persist and
-                            // arm. Undispatched, so rapid taps enter toggleLock in tap order.
+                            // arm. Undispatched, so rapid taps enter editLock in tap order.
                             app.scope.launch(start = CoroutineStart.UNDISPATCHED) {
                                 app.scheduler.setEnabled(alarm.id, on)
                             }

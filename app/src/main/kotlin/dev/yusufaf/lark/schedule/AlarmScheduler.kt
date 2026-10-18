@@ -10,6 +10,7 @@ import dev.yusufaf.lark.data.AlarmRepository
 import dev.yusufaf.lark.core.Alarm
 import dev.yusufaf.lark.core.MISSED_GRACE
 import dev.yusufaf.lark.core.RescheduleAction
+import dev.yusufaf.lark.core.forSave
 import dev.yusufaf.lark.core.nextTrigger
 import dev.yusufaf.lark.core.rescheduleAction
 import dev.yusufaf.lark.ring.AlarmNotifications
@@ -26,7 +27,9 @@ import java.time.ZonedDateTime
  */
 class AlarmScheduler(private val context: Context, private val repository: AlarmRepository) {
     private val alarmManager = context.getSystemService(AlarmManager::class.java)
-    private val toggleLock = Mutex()
+    // Serialises toggles, saves, deletes and rescheduleAll so none can leave an alarm armed
+    // against its stored state. rearmAfterRing stays outside: it runs in runBlocking on the main thread.
+    private val editLock = Mutex()
 
     suspend fun schedule(alarm: Alarm, now: ZonedDateTime = ZonedDateTime.now()) {
         val trigger = alarm.nextTrigger(now)
@@ -46,10 +49,29 @@ class AlarmScheduler(private val context: Context, private val repository: Alarm
     }
 
     /** Persists the switch, then arms or cancels to match. Serialised so rapid toggles can't leave a disabled alarm armed. */
-    suspend fun setEnabled(id: Long, enabled: Boolean) = toggleLock.withLock {
+    suspend fun setEnabled(id: Long, enabled: Boolean) = editLock.withLock {
         repository.setEnabled(id, enabled)
         val alarm = repository.get(id)
         if (alarm != null && alarm.enabled) schedule(alarm) else cancel(id)
+    }
+
+    /**
+     * Persists [alarm] (as a new alarm when [isNew]) via [forSave], then arms it. Re-read like
+     * [setEnabled], so [schedule] works from the stored copy. Returns null if it was deleted meanwhile.
+     */
+    suspend fun save(alarm: Alarm, isNew: Boolean): Alarm? = editLock.withLock {
+        val edited = alarm.forSave()
+        val id = if (isNew) repository.add(edited).id else edited.id.also { repository.update(edited) }
+        val stored = repository.get(id) ?: return@withLock null
+        schedule(stored)
+        stored
+    }
+
+    // Store first: an orphaned AlarmManager entry rings nothing (RingService drops unknown
+    // ids), while the reverse order could leave an enabled alarm un-armed.
+    suspend fun delete(id: Long) = editLock.withLock {
+        repository.delete(id)
+        cancel(id)
     }
 
     suspend fun cancel(id: Long) {
@@ -68,7 +90,7 @@ class AlarmScheduler(private val context: Context, private val repository: Alarm
      * After a clock or zone change they are intact, so a trigger already in the past is
      * being delivered, or was moved by the clock jump, not missed: leave it to AlarmManager.
      */
-    suspend fun rescheduleAll(alarmsLost: Boolean) {
+    suspend fun rescheduleAll(alarmsLost: Boolean) = editLock.withLock {
         val now = ZonedDateTime.now()
         repository.snapshot().forEach { alarm ->
             // finishRing settles a ringing alarm. Its armedFor is still in the past, so
