@@ -1,7 +1,6 @@
 package dev.yusufaf.lark.core
 
 import java.time.format.TextStyle
-import java.time.temporal.WeekFields
 import java.util.Locale
 
 // Shared by the ringing and missed notifications and the alarm list so all describe an alarm the same way.
@@ -18,8 +17,7 @@ fun Alarm.missedText(locale: Locale = Locale.getDefault()): String = withLabel(t
 fun Alarm.daysText(locale: Locale = Locale.getDefault()): String = when (days.size) {
     0 -> "Once"
     7 -> "Every day"
-    else -> generateSequence(WeekFields.of(locale).firstDayOfWeek) { it.plus(1) }
-        .take(7)
+    else -> weekdays(locale)
         .filter { it in days }
         .joinToString(", ") { it.getDisplayName(TextStyle.SHORT, locale) }
 }
