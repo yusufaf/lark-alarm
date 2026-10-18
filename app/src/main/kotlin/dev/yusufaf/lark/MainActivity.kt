@@ -18,6 +18,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
@@ -31,6 +32,8 @@ import androidx.navigation3.ui.NavDisplay
 import androidx.wear.compose.material3.AppScaffold
 import androidx.wear.compose.material3.MaterialTheme
 import androidx.wear.compose.navigation3.rememberSwipeDismissableSceneStrategy
+import dev.yusufaf.lark.core.Alarm
+import dev.yusufaf.lark.core.newAlarm
 import dev.yusufaf.lark.ring.AlarmNotifications
 import dev.yusufaf.lark.ring.RingActivity
 import dev.yusufaf.lark.ring.RingService
@@ -42,6 +45,7 @@ import dev.yusufaf.lark.ui.EditAlarmScreen
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.launch
+import java.time.LocalTime
 
 class MainActivity : ComponentActivity() {
     private var notificationsBlocked by mutableStateOf(false)
@@ -112,7 +116,7 @@ private fun LarkApp(app: LarkApplication, notificationsBlocked: Boolean, onFixNo
                         onFixNotifications = onFixNotifications,
                         onToggle = { alarm, on ->
                             // Process scope, so leaving the list can't cancel between persist and
-                            // arm. Undispatched, so rapid taps enter toggleLock in tap order.
+                            // arm. Undispatched, so rapid taps enter editLock in tap order.
                             app.scope.launch(start = CoroutineStart.UNDISPATCHED) {
                                 app.scheduler.setEnabled(alarm.id, on)
                             }
@@ -121,7 +125,32 @@ private fun LarkApp(app: LarkApplication, notificationsBlocked: Boolean, onFixNo
                         onAdd = { backStack.add(EditAlarm()) },
                     )
                 }
-                entry<EditAlarm> { key -> EditAlarmScreen(key.id) }
+                entry<EditAlarm> { key ->
+                    val isNew = key.id == null
+                    val close = { if (backStack.lastOrNull() == key) backStack.removeLastOrNull() }
+                    val initial by produceState<Alarm?>(null, key) {
+                        value = if (key.id == null) {
+                            newAlarm(LocalTime.now())
+                        } else {
+                            app.repository.get(key.id) ?: run { close(); null }
+                        }
+                    }
+                    EditAlarmScreen(
+                        initial = initial,
+                        isNew = isNew,
+                        // Process scope for the same reason as onToggle.
+                        onSave = { alarm ->
+                            app.scope.launch(start = CoroutineStart.UNDISPATCHED) { app.scheduler.save(alarm, isNew) }
+                            close()
+                        },
+                        onDelete = {
+                            key.id?.let { id ->
+                                app.scope.launch(start = CoroutineStart.UNDISPATCHED) { app.scheduler.delete(id) }
+                            }
+                            close()
+                        },
+                    )
+                }
             },
         )
     }

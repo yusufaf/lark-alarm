@@ -6,6 +6,7 @@ import androidx.datastore.core.handlers.ReplaceFileCorruptionHandler
 import androidx.datastore.dataStore
 import dev.yusufaf.lark.core.Alarm
 import dev.yusufaf.lark.core.AlarmStore
+import dev.yusufaf.lark.core.without
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
@@ -70,5 +71,9 @@ class AlarmRepository(context: Context) {
                 },
             )
         }
+    }
+
+    suspend fun delete(id: Long) {
+        store.updateData { it.without(id) }
     }
 }
