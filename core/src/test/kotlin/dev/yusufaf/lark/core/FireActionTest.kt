@@ -60,6 +60,12 @@ class FireActionTest {
         assertEquals(a, firedFor(a, alarm(c)))
     }
 
+    // Fires armed before the upgrade carry no instant, and a legacy alarm may have none stored.
+    @Test
+    fun legacyFireOfRingingLegacyAlarmIsDuplicate() {
+        assertEquals(FireAction.Duplicate, fireAction(Ringing(1, null), 1, firedFor(null, alarm(null)), alarm(null)))
+    }
+
     @Test
     fun legacyFireFallsBackToStoredInstant() {
         assertEquals(c, firedFor(null, alarm(c)))
