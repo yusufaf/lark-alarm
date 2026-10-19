@@ -77,7 +77,10 @@ class RingService : Service() {
         // Promote before touching storage: startForeground() must run within seconds of
         // the receiver's startForegroundService() call, whatever the file read does.
         promote(alarm)
+        // Mark before reading (#25): from here on rescheduleAll skips this alarm. A fire
+        // mid-ring leaves the mark to the ring in progress.
         val idle = alarm == null
+        if (idle) _ringingAlarmId.value = id
         val stored = runBlocking { app.repository.get(id) }
         val fired = firedFor(extraArmedFor, stored)
         when (fireAction(alarm?.let { Ringing(it.id, ringFiredFor) }, id, fired, stored)) {
@@ -97,6 +100,7 @@ class RingService : Service() {
             FireAction.Unknown -> {
                 Log.w(AlarmScheduler.TAG, "alarm $id fired but is not in the store")
                 if (idle) {
+                    _ringingAlarmId.value = null
                     ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
                     stopSelf()
                 }
@@ -130,7 +134,6 @@ class RingService : Service() {
             ContextCompat.RECEIVER_NOT_EXPORTED,
         )
         screenOffRegistered = true
-        _ringingAlarmId.value = id
         handler.postDelayed(autoStop, RING_TIMEOUT_MS)
         // After ringingAlarmId is set: RingActivity closes as soon as it sees no ring.
         openRingScreen(id)

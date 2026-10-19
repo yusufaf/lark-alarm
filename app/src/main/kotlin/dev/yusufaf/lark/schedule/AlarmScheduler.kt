@@ -129,7 +129,9 @@ class AlarmScheduler(private val context: Context, private val repository: Alarm
             // finishRing settles a ringing alarm. Its armedFor is still in the past, so
             // acting on it here would re-fire it or spend it mid-ring. The id stays set while
             // finishRing waits for this lock, so the loop never arms a late ring of an alarm
-            // that is being settled.
+            // that is being settled. RingService sets the id before it reads the alarm, so
+            // from then on this skips it; a change this loop made earlier, or one made while
+            // the fire was on its way to RingService, stands (settling takes Keep).
             if (alarm.id == RingService.ringingAlarmId.value) return@forEach
             // One alarm failing must not leave the ones after it un-armed.
             try {
