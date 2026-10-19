@@ -47,10 +47,21 @@ class AlarmScheduler(private val context: Context, private val repository: Alarm
         // Persist first: if the process dies before setAlarmClock, a future armed-for
         // instant just gets re-armed, while a stale past one could be taken as missed.
         repository.setArmedFor(alarm.id, triggerMs)
-        alarmManager.setAlarmClock(
-            AlarmManager.AlarmClockInfo(triggerMs, showIntent()),
-            fireIntent(alarm.id, triggerMs),
-        )
+        try {
+            alarmManager.setAlarmClock(
+                AlarmManager.AlarmClockInfo(triggerMs, showIntent()),
+                fireIntent(alarm.id, triggerMs),
+            )
+        } catch (e: Exception) {
+            // Nothing is armed for triggerMs, and fireIntent already rewrote the extras of any
+            // older arming, so cancel that too: armedFor null must mean nothing is armed (#25).
+            try {
+                cancel(alarm.id)
+            } catch (c: Exception) {
+                e.addSuppressed(c)
+            }
+            throw e
+        }
         Log.i(TAG, "scheduled alarm ${alarm.id} for $trigger")
     }
 
