@@ -223,7 +223,7 @@ class AlarmScheduler(private val context: Context, private val repository: Alarm
         const val EXTRA_ARMED_FOR = "armed_for"
 
         /** The armed-for instant a fire carried, or null for one armed before it carried any. */
-        fun armedFor(intent: Intent): Long? =
+        fun armedForExtra(intent: Intent): Long? =
             if (intent.hasExtra(EXTRA_ARMED_FOR)) intent.getLongExtra(EXTRA_ARMED_FOR, 0) else null
     }
 }

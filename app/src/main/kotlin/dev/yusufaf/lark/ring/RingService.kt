@@ -63,7 +63,7 @@ class RingService : Service() {
         when (intent?.action) {
             ACTION_RING -> startRinging(
                 intent.getLongExtra(AlarmScheduler.EXTRA_ALARM_ID, -1),
-                AlarmScheduler.armedFor(intent),
+                AlarmScheduler.armedForExtra(intent),
             )
             ACTION_DISMISS -> finishRing(RingEnd.Dismissed)
             ACTION_SNOOZE -> finishRing(RingEnd.Snoozed)
