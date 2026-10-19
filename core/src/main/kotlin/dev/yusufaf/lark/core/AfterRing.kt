@@ -19,14 +19,14 @@ sealed interface AfterRing {
 }
 
 /**
- * Called on the alarm as stored when the ring ends. [armedAtRingStart] is [Alarm.armedForEpochMs]
- * as loaded when the ring started. An edit, toggle or save mid-ring changes it, and so, rarely,
- * does a reschedule that lands before the ring is marked as ringing (#25); either way the
- * stored alarm stands.
+ * Called on the alarm as stored when the ring ends. [firedFor] is the armed-for instant the
+ * ring's fire carried (see the [firedFor] function). A save, toggle or delete mid-ring changes
+ * the stored one, and so, rarely, does a reschedule that acts on the alarm before RingService
+ * marks the ring (#25); either way the stored alarm stands.
  */
-fun Alarm.afterRing(armedAtRingStart: Long?, snooze: Boolean): AfterRing = when {
+fun Alarm.afterRing(firedFor: Long?, snooze: Boolean): AfterRing = when {
     // Disabled covers a switch-off of a legacy alarm, whose armedForEpochMs was already null.
-    !enabled || armedForEpochMs != armedAtRingStart -> AfterRing.Keep
+    !enabled || armedForEpochMs != firedFor -> AfterRing.Keep
     snooze -> AfterRing.Snooze
     days.isEmpty() -> AfterRing.Disable
     else -> AfterRing.ArmNext

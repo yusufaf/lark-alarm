@@ -49,7 +49,7 @@ class AlarmScheduler(private val context: Context, private val repository: Alarm
         repository.setArmedFor(alarm.id, triggerMs)
         alarmManager.setAlarmClock(
             AlarmManager.AlarmClockInfo(triggerMs, showIntent()),
-            fireIntent(alarm.id),
+            fireIntent(alarm.id, triggerMs),
         )
         Log.i(TAG, "scheduled alarm ${alarm.id} for $trigger")
     }
@@ -82,15 +82,15 @@ class AlarmScheduler(private val context: Context, private val repository: Alarm
 
     /**
      * Settles a finished ring of alarm [id] from a fresh read, so a save, toggle or delete that
-     * landed mid-ring stands (see [afterRing]). [armedAtRingStart] is the alarm's
-     * [Alarm.armedForEpochMs] as loaded when the ring started; [snooze] is true for a Snooze press.
+     * landed mid-ring stands (see [afterRing]). [firedFor] is the armed-for instant the ring's
+     * fire carried; [snooze] is true for a Snooze press.
      */
-    suspend fun settleRing(id: Long, armedAtRingStart: Long?, snooze: Boolean) = editLock.withLock {
+    suspend fun settleRing(id: Long, firedFor: Long?, snooze: Boolean) = editLock.withLock {
         // Read the clock only once the lock is held: a reschedule may have kept us waiting.
         val now = ZonedDateTime.now()
         // Deleted mid-ring: delete() already cancelled it.
         val alarm = repository.get(id) ?: return@withLock
-        when (alarm.afterRing(armedAtRingStart, snooze)) {
+        when (alarm.afterRing(firedFor, snooze)) {
             AfterRing.Keep -> Log.i(TAG, "alarm $id changed while ringing; keeping that")
             AfterRing.Snooze -> {
                 repository.setSnoozedUntil(id, alarm.snoozedUntil(now.toInstant()))
@@ -167,26 +167,30 @@ class AlarmScheduler(private val context: Context, private val repository: Alarm
     // BOOT_COMPLETED / MY_PACKAGE_REPLACED receiver. So fire it through AlarmManager like
     // an on-time ring. armedFor stays at the original instant, which keeps MISSED_GRACE
     // bounding the lateness if the process dies before this alarm goes off; RingService's
-    // finishRing then disables or re-arms the alarm as usual.
+    // finishRing then disables or re-arms the alarm as usual. The fire carries that original
+    // instant too, so RingService takes it and a still-pending original fire as one occurrence.
     private fun ringLate(alarm: Alarm, now: ZonedDateTime) {
         val nowMs = now.toInstant().toEpochMilli()
         val lateMs = nowMs - (alarm.armedForEpochMs ?: nowMs)
         Log.i(TAG, "alarm ${alarm.id} passed unseen ${lateMs / 1000}s ago (armed for ${armedFor(alarm, now)}); ringing late")
         alarmManager.setAlarmClock(
             AlarmManager.AlarmClockInfo(nowMs + LATE_RING_DELAY_MS, showIntent()),
-            fireIntent(alarm.id),
+            fireIntent(alarm.id, alarm.armedForEpochMs),
         )
     }
 
     private fun armedFor(alarm: Alarm, now: ZonedDateTime) =
         alarm.armedForEpochMs?.let { Instant.ofEpochMilli(it).atZone(now.zone) }
 
-    private fun fireIntent(id: Long): PendingIntent = PendingIntent.getBroadcast(
+    // [armedFor] is the occurrence this arming rings for. Extras don't take part in
+    // PendingIntent matching, so cancel() needs none.
+    private fun fireIntent(id: Long, armedFor: Long? = null): PendingIntent = PendingIntent.getBroadcast(
         context,
         id.toInt(),
         Intent(context, AlarmReceiver::class.java)
             .setAction(ACTION_FIRE)
-            .putExtra(EXTRA_ALARM_ID, id),
+            .putExtra(EXTRA_ALARM_ID, id)
+            .apply { if (armedFor != null) putExtra(EXTRA_ARMED_FOR, armedFor) },
         PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
     )
 
@@ -203,5 +207,10 @@ class AlarmScheduler(private val context: Context, private val repository: Alarm
         private const val LATE_RING_DELAY_MS = 1_000L
         const val ACTION_FIRE = "dev.yusufaf.lark.action.FIRE"
         const val EXTRA_ALARM_ID = "alarm_id"
+        const val EXTRA_ARMED_FOR = "armed_for"
+
+        /** The armed-for instant a fire carried, or null for one armed before it carried any. */
+        fun armedFor(intent: Intent): Long? =
+            if (intent.hasExtra(EXTRA_ARMED_FOR)) intent.getLongExtra(EXTRA_ARMED_FOR, 0) else null
     }
 }

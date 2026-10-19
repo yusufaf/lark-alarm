@@ -21,6 +21,10 @@ import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
 import dev.yusufaf.lark.LarkApplication
 import dev.yusufaf.lark.core.Alarm
+import dev.yusufaf.lark.core.FireAction
+import dev.yusufaf.lark.core.Ringing
+import dev.yusufaf.lark.core.fireAction
+import dev.yusufaf.lark.core.firedFor
 import dev.yusufaf.lark.schedule.AlarmScheduler
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -40,6 +44,7 @@ class RingService : Service() {
     private var wakeLock: PowerManager.WakeLock? = null
     private var screenWakeLock: PowerManager.WakeLock? = null
     private var alarm: Alarm? = null
+    private var ringFiredFor: Long? = null
 
     // The system cancels app vibrations when the screen is turned off by the user, and
     // Samsung's wrist-down gesture counts as that, so a ring the screen wake-up made
@@ -56,7 +61,10 @@ class RingService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
-            ACTION_RING -> startRinging(intent.getLongExtra(AlarmScheduler.EXTRA_ALARM_ID, -1))
+            ACTION_RING -> startRinging(
+                intent.getLongExtra(AlarmScheduler.EXTRA_ALARM_ID, -1),
+                AlarmScheduler.armedFor(intent),
+            )
             ACTION_DISMISS -> finishRing(RingEnd.Dismissed)
             ACTION_SNOOZE -> finishRing(RingEnd.Snoozed)
             // Restarted by the system with no intent: nothing to ring, go away quietly.
@@ -65,34 +73,41 @@ class RingService : Service() {
         return START_NOT_STICKY
     }
 
-    private fun startRinging(id: Long) {
+    private fun startRinging(id: Long, extraArmedFor: Long?) {
         // Promote before touching storage: startForeground() must run within seconds of
         // the receiver's startForegroundService() call, whatever the file read does.
         promote(alarm)
-        val loaded = runBlocking { app.repository.get(id) }
-        if (alarm?.id == id && loaded?.armedForEpochMs == alarm?.armedForEpochMs) {
-            // A late ring of this same alarm, armed by a reschedule before ringingAlarmId was
-            // set (#25); ringLate leaves armedFor alone. Its own finishRing settles it, and
-            // settling here would turn Snooze into Keep. A fire after a mid-ring save has a
-            // new armedFor and is handled below like any second alarm.
-            Log.i(AlarmScheduler.TAG, "alarm $id fired again while ringing; ignoring")
-            return
+        val idle = alarm == null
+        val stored = runBlocking { app.repository.get(id) }
+        val fired = firedFor(extraArmedFor, stored)
+        when (fireAction(alarm?.let { Ringing(it.id, ringFiredFor) }, id, fired, stored)) {
+            FireAction.Duplicate -> {
+                // A late ring of this same occurrence, or a fire armed before a mid-ring save
+                // (#25). Its own finishRing settles it, and settling here would turn Snooze into Keep.
+                Log.i(AlarmScheduler.TAG, "alarm $id fired again for the same occurrence while ringing; ignoring")
+                return
+            }
+            FireAction.Overlap -> {
+                // A second alarm fired mid-ring. The user is already being woken, so treat it
+                // as rung rather than dropping it silently and leaving it un-armed.
+                Log.i(AlarmScheduler.TAG, "alarm $id fired while ${alarm?.id} rings; re-arming it")
+                settle(id, fired, snooze = false)
+                return
+            }
+            FireAction.Unknown -> {
+                Log.w(AlarmScheduler.TAG, "alarm $id fired but is not in the store")
+                if (idle) {
+                    ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
+                    stopSelf()
+                }
+                return
+            }
+            FireAction.Ring -> Unit
         }
-        if (alarm != null) {
-            // A second alarm fired mid-ring. The user is already being woken, so treat it
-            // as rung rather than dropping it silently and leaving it un-armed.
-            Log.i(AlarmScheduler.TAG, "alarm $id fired while ${alarm?.id} rings; re-arming it")
-            loaded?.let { settle(it, snooze = false) }
-            return
-        }
+        val loaded = checkNotNull(stored)
         promote(loaded)
-        if (loaded == null) {
-            Log.w(AlarmScheduler.TAG, "alarm $id fired but is not in the store")
-            ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
-            stopSelf()
-            return
-        }
         alarm = loaded
+        ringFiredFor = fired
         Log.i(AlarmScheduler.TAG, "ringing alarm $id")
 
         val power = getSystemService(PowerManager::class.java)
@@ -159,15 +174,17 @@ class RingService : Service() {
 
     private fun finishRing(end: RingEnd) {
         val ringing = alarm ?: return promoteAndStop()
+        val firedFor = ringFiredFor
         Log.i(AlarmScheduler.TAG, "alarm ${ringing.id} stopped: ${end.reason}")
         handler.removeCallbacks(autoStop)
         stopRingEffects()
         alarm = null
+        ringFiredFor = null
         // Before settling: its store writes block, and if the process dies during them the
         // user should still see the miss. A later boot reclassification re-posts under the
         // same (tag, id), so it does not duplicate.
         if (end == RingEnd.TimedOut) AlarmNotifications.postMissed(this, ringing)
-        settle(ringing, snooze = end == RingEnd.Snoozed)
+        settle(ringing.id, firedFor, snooze = end == RingEnd.Snoozed)
         // Only after settling: while the id is set, rescheduleAll skips this alarm, so it can't
         // arm a late ring of it that would fire before settle's cancel (#25).
         _ringingAlarmId.value = null
@@ -179,8 +196,8 @@ class RingService : Service() {
     // landed mid-ring stands (AfterRing). The writes are awaited because the process may be
     // killed right after stopSelf(), and a lost one would leave the past armed-for instant
     // behind, so the next reschedule would ring it again.
-    private fun settle(rung: Alarm, snooze: Boolean) = runBlocking {
-        app.scheduler.settleRing(rung.id, rung.armedForEpochMs, snooze)
+    private fun settle(id: Long, firedFor: Long?, snooze: Boolean) = runBlocking {
+        app.scheduler.settleRing(id, firedFor, snooze)
     }
 
     // Every start via startForegroundService() must be followed by startForeground(),
@@ -237,10 +254,11 @@ class RingService : Service() {
          */
         val ringingAlarmId: StateFlow<Long?> = _ringingAlarmId
 
-        fun ringIntent(context: Context, id: Long): Intent =
+        fun ringIntent(context: Context, id: Long, armedFor: Long?): Intent =
             Intent(context, RingService::class.java)
                 .setAction(ACTION_RING)
                 .putExtra(AlarmScheduler.EXTRA_ALARM_ID, id)
+                .apply { if (armedFor != null) putExtra(AlarmScheduler.EXTRA_ARMED_FOR, armedFor) }
 
         fun dismissIntent(context: Context): Intent =
             Intent(context, RingService::class.java).setAction(ACTION_DISMISS)
