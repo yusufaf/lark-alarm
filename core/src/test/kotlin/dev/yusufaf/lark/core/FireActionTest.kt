@@ -54,16 +54,21 @@ class FireActionTest {
         assertEquals(FireAction.Unknown, fireAction(Ringing(1, a), 2, c, null))
     }
 
+    // A legacy alarm (none stored, fire armed before the upgrade) rings with no instant.
+    @Test
+    fun noInstantFireOfNoInstantRingIsDuplicate() {
+        assertEquals(FireAction.Duplicate, fireAction(Ringing(1, null), 1, null, alarm(null)))
+    }
+
+    @Test
+    fun reArmOfNoInstantRingOverlaps() {
+        assertEquals(FireAction.Overlap, fireAction(Ringing(1, null), 1, c, alarm(c)))
+    }
+
     // A fire in flight while the user saved settles against its own instant, so the save stands.
     @Test
     fun firedForPrefersTheFiresInstant() {
         assertEquals(a, firedFor(a, alarm(c)))
-    }
-
-    // Fires armed before the upgrade carry no instant, and a legacy alarm may have none stored.
-    @Test
-    fun legacyFireOfRingingLegacyAlarmIsDuplicate() {
-        assertEquals(FireAction.Duplicate, fireAction(Ringing(1, null), 1, firedFor(null, alarm(null)), alarm(null)))
     }
 
     @Test
