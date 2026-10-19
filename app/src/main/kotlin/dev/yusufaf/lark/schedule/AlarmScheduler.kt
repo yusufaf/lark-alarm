@@ -7,12 +7,15 @@ import android.content.Intent
 import android.util.Log
 import dev.yusufaf.lark.MainActivity
 import dev.yusufaf.lark.data.AlarmRepository
+import dev.yusufaf.lark.core.AfterRing
 import dev.yusufaf.lark.core.Alarm
 import dev.yusufaf.lark.core.MISSED_GRACE
 import dev.yusufaf.lark.core.RescheduleAction
+import dev.yusufaf.lark.core.afterRing
 import dev.yusufaf.lark.core.forSave
 import dev.yusufaf.lark.core.nextTrigger
 import dev.yusufaf.lark.core.rescheduleAction
+import dev.yusufaf.lark.core.snoozedUntil
 import dev.yusufaf.lark.ring.AlarmNotifications
 import dev.yusufaf.lark.ring.RingService
 import kotlinx.coroutines.CancellationException
@@ -23,15 +26,15 @@ import java.time.ZonedDateTime
 
 /**
  * Arms one exact alarm per [Alarm] with [AlarmManager.setAlarmClock]. Repeating alarms are
- * armed one occurrence at a time; whoever handles a ring re-arms the next one.
+ * armed one occurrence at a time; [settleRing] re-arms the next one.
  */
 class AlarmScheduler(private val context: Context, private val repository: AlarmRepository) {
     private val alarmManager = context.getSystemService(AlarmManager::class.java)
-    // Serialises toggles, saves, deletes and rescheduleAll against each other, so none acts on
-    // a copy another has just changed. RingService's rearmAfterRing stays outside: it runs in
-    // runBlocking on the main thread, and works from the copy loaded when the ring started, so
-    // a save, toggle or delete of the ringing alarm that lands mid-ring is overwritten on
-    // Dismiss. MainActivity's redirect to RingActivity narrows that window but does not close it.
+    // Serialises toggles, saves, deletes, ring settling and rescheduleAll against each other,
+    // so none acts on a copy another has just changed. RingService takes it in runBlocking on
+    // the main thread; that can't deadlock because every other holder runs on app.scope and
+    // needs no main thread once it suspends. The Mutex isn't reentrant: code holding it may
+    // call repository methods, schedule and cancel, never another locked method.
     private val editLock = Mutex()
 
     suspend fun schedule(alarm: Alarm, now: ZonedDateTime = ZonedDateTime.now()) {
@@ -77,6 +80,33 @@ class AlarmScheduler(private val context: Context, private val repository: Alarm
         cancel(id)
     }
 
+    /**
+     * Settles a finished ring of alarm [id] from a fresh read, so a save, toggle or delete that
+     * landed mid-ring stands (see [afterRing]). [armedAtRingStart] is the alarm's
+     * [Alarm.armedForEpochMs] as loaded when the ring started; [snooze] is true for a Snooze press.
+     */
+    suspend fun settleRing(id: Long, armedAtRingStart: Long?, snooze: Boolean) = editLock.withLock {
+        // Read the clock only once the lock is held: a reschedule may have kept us waiting.
+        val now = ZonedDateTime.now()
+        // Deleted mid-ring: delete() already cancelled it.
+        val alarm = repository.get(id) ?: return@withLock
+        when (alarm.afterRing(armedAtRingStart, snooze)) {
+            AfterRing.Keep -> Log.i(TAG, "alarm $id changed while ringing; keeping that")
+            AfterRing.Snooze -> {
+                repository.setSnoozedUntil(id, alarm.snoozedUntil(now.toInstant()))
+                repository.get(id)?.let { schedule(it, now) }
+            }
+            AfterRing.Disable -> {
+                repository.setEnabled(id, false)
+                cancel(id)
+            }
+            AfterRing.ArmNext -> {
+                repository.setSnoozedUntil(id, null)
+                repository.get(id)?.let { schedule(it, now) }
+            }
+        }
+    }
+
     suspend fun cancel(id: Long) {
         alarmManager.cancel(fireIntent(id))
         repository.setArmedFor(id, null)
@@ -97,7 +127,9 @@ class AlarmScheduler(private val context: Context, private val repository: Alarm
         val now = ZonedDateTime.now()
         repository.snapshot().forEach { alarm ->
             // finishRing settles a ringing alarm. Its armedFor is still in the past, so
-            // acting on it here would re-fire it or spend it mid-ring.
+            // acting on it here would re-fire it or spend it mid-ring. The id stays set while
+            // finishRing waits for this lock, so the loop never arms a late ring of an alarm
+            // that is being settled.
             if (alarm.id == RingService.ringingAlarmId.value) return@forEach
             // One alarm failing must not leave the ones after it un-armed.
             try {

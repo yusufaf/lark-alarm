@@ -73,6 +73,16 @@ class AlarmRepository(context: Context) {
         }
     }
 
+    suspend fun setSnoozedUntil(id: Long, epochMs: Long?) {
+        store.updateData { current ->
+            current.copy(
+                alarms = current.alarms.map {
+                    if (it.id == id) it.copy(snoozedUntilEpochMs = epochMs) else it
+                },
+            )
+        }
+    }
+
     suspend fun delete(id: Long) {
         store.updateData { it.without(id) }
     }
