@@ -20,12 +20,7 @@ class BootReceiver : BroadcastReceiver() {
         val pending = goAsync()
         app.scope.launch {
             try {
-                app.scheduler.rescheduleAll(
-                    alarmsLost = intent.action in setOf(
-                        Intent.ACTION_BOOT_COMPLETED,
-                        Intent.ACTION_MY_PACKAGE_REPLACED,
-                    ),
-                )
+                app.scheduler.rescheduleAll(alarmsLost = intent.action in LOST_STATE_ACTIONS)
             } finally {
                 pending.finish()
             }
@@ -37,6 +32,12 @@ class BootReceiver : BroadcastReceiver() {
             Intent.ACTION_BOOT_COMPLETED,
             Intent.ACTION_TIME_CHANGED,
             Intent.ACTION_TIMEZONE_CHANGED,
+            Intent.ACTION_MY_PACKAGE_REPLACED,
+        )
+
+        // AlarmManager may have dropped its alarms after these.
+        val LOST_STATE_ACTIONS = setOf(
+            Intent.ACTION_BOOT_COMPLETED,
             Intent.ACTION_MY_PACKAGE_REPLACED,
         )
     }
