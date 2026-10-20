@@ -60,6 +60,8 @@ class FireActionTest {
         assertEquals(FireAction.Duplicate, fireAction(Ringing(1, null), 1, null, alarm(null)))
     }
 
+    // A repeat of a no-extra fire after a mid-ring save would look the same (it falls back to the
+    // stored c), but only ringLate repeats a fire, and its fires always carry the instant.
     @Test
     fun reArmOfNoInstantRingOverlaps() {
         assertEquals(FireAction.Overlap, fireAction(Ringing(1, null), 1, c, alarm(c)))
@@ -74,6 +76,7 @@ class FireActionTest {
     @Test
     fun legacyFireFallsBackToStoredInstant() {
         assertEquals(c, firedFor(null, alarm(c)))
+        assertNull(firedFor(null, alarm(null)))
         assertNull(firedFor(null, null))
     }
 }
