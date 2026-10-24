@@ -40,7 +40,7 @@ object AlarmNotifications {
             NotificationManager.IMPORTANCE_HIGH,
         ).apply {
             description = "Ringing alarms"
-            // RingService drives the vibration itself; the channel must not add its own.
+            // RingService drives the vibration and the alarm tone itself; the channel must not add its own.
             setSound(null, null)
             enableVibration(false)
         }
