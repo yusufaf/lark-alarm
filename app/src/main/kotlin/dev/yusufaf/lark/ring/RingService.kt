@@ -7,11 +7,16 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.ServiceInfo
 import android.media.AudioAttributes
+import android.media.AudioDeviceInfo
+import android.media.AudioManager
+import android.media.Ringtone
+import android.media.RingtoneManager
 import android.os.Build
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
 import android.os.PowerManager
+import android.os.SystemClock
 import android.os.VibrationAttributes
 import android.os.VibrationEffect
 import android.os.Vibrator
@@ -22,16 +27,19 @@ import androidx.core.content.ContextCompat
 import dev.yusufaf.lark.LarkApplication
 import dev.yusufaf.lark.core.Alarm
 import dev.yusufaf.lark.core.FireAction
+import dev.yusufaf.lark.core.RingSound
 import dev.yusufaf.lark.core.Ringing
 import dev.yusufaf.lark.core.fireAction
 import dev.yusufaf.lark.core.firedFor
+import dev.yusufaf.lark.core.ringSound
 import dev.yusufaf.lark.schedule.AlarmScheduler
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.runBlocking
 
 /**
- * Keeps the watch vibrating while an alarm rings. Runs as a `systemExempted` foreground
+ * Keeps the watch vibrating, and playing the alarm tone when the alarm has sound on, while an
+ * alarm rings. Runs as a `systemExempted` foreground
  * service, which an exact alarm's delivery may start from the background even after boot.
  * Other receivers (BOOT_COMPLETED, MY_PACKAGE_REPLACED) may not, so go through AlarmManager.
  */
@@ -41,6 +49,7 @@ class RingService : Service() {
     private val autoStop = Runnable { finishRing(RingEnd.TimedOut) }
 
     private var vibrator: Vibrator? = null
+    private var ringtone: Ringtone? = null
     private var wakeLock: PowerManager.WakeLock? = null
     private var screenWakeLock: PowerManager.WakeLock? = null
     private var alarm: Alarm? = null
@@ -144,6 +153,64 @@ class RingService : Service() {
         if (blocked) {
             Log.w(AlarmScheduler.TAG, "notifications blocked; alarm $id rings with no notification, dismiss from the ring screen or open Lark")
         }
+        // Last: opening the tone blocks on MediaPlayer.prepare(), so everything above runs first.
+        ringtone = startTone(loaded)
+    }
+
+    // Diagnostic only on failure: the vibration already going is the ring, sound is extra.
+    private fun startTone(alarm: Alarm): Ringtone? {
+        if (!alarm.sound) return null
+        return try {
+            val audio = getSystemService(AudioManager::class.java)
+            val hasTone = RingtoneManager.getActualDefaultRingtoneUri(this, RingtoneManager.TYPE_ALARM) != null
+            when (ringSound(alarm.sound, hasSpeaker(audio), hasTone)) {
+                RingSound.Off -> null
+                RingSound.NoSpeaker -> {
+                    Log.w(AlarmScheduler.TAG, "alarm ${alarm.id} has sound on but the watch has no speaker; vibrating only")
+                    null
+                }
+                RingSound.NoTone -> {
+                    Log.w(AlarmScheduler.TAG, "alarm ${alarm.id} has sound on but no default alarm tone is set; vibrating only")
+                    null
+                }
+                RingSound.Tone -> playTone(alarm, audio)
+            }
+        } catch (e: Exception) {
+            Log.e(AlarmScheduler.TAG, "failed to start the alarm tone for alarm ${alarm.id}; vibrating only", e)
+            null
+        }
+    }
+
+    private fun hasSpeaker(audio: AudioManager): Boolean =
+        audio.getDevices(AudioManager.GET_DEVICES_OUTPUTS).any {
+            it.type == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER || it.type == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER_SAFE
+        }
+
+    private fun playTone(alarm: Alarm, audio: AudioManager): Ringtone? {
+        val started = SystemClock.elapsedRealtime()
+        // The settings URI, not the actual one: SettingsProvider serves its cached copy, so
+        // Lark needs no media permission.
+        val tone = RingtoneManager.getRingtone(this, RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM))
+        if (tone == null) {
+            // No local player could open it, and there is no system RingtonePlayer to hand it to.
+            Log.w(AlarmScheduler.TAG, "alarm tone could not be opened for alarm ${alarm.id}; vibrating only")
+            return null
+        }
+        // Before play(): setting attributes re-creates the player.
+        tone.audioAttributes = AudioAttributes.Builder()
+            .setUsage(AudioAttributes.USAGE_ALARM)
+            .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+            .build()
+        tone.isLooping = true
+        // Ringtone.play() silently does nothing at volume 0.
+        if (audio.getStreamVolume(AudioManager.STREAM_ALARM) == 0) {
+            Log.w(AlarmScheduler.TAG, "alarm volume is 0; alarm ${alarm.id} tone will be silent")
+        }
+        tone.play()
+        val playing = tone.isPlaying
+        Log.i(AlarmScheduler.TAG, "alarm tone for alarm ${alarm.id}: playing=$playing after ${SystemClock.elapsedRealtime() - started}ms")
+        // Kept even when not playing, so stopRingEffects() still releases it.
+        return tone
     }
 
     // Starts from a service are background activity starts, foreground service or not, and
@@ -233,6 +300,8 @@ class RingService : Service() {
             screenOffRegistered = false
         }
         vibrator?.cancel()
+        ringtone?.let { runCatching { it.stop() } }
+        ringtone = null
         screenWakeLock?.takeIf { it.isHeld }?.release()
         wakeLock?.takeIf { it.isHeld }?.release()
     }
