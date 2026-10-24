@@ -2,10 +2,8 @@ package dev.yusufaf.lark.core
 
 /** What a ring plays besides vibration, given the alarm's choice and what the watch can do. */
 sealed interface RingSound {
-    /** Sound is off for this alarm. */
     data object Off : RingSound
 
-    /** Play the default alarm tone. */
     data object Tone : RingSound
 
     /** Sound is on, but the watch has no built-in speaker: vibrate only. */
