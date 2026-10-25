@@ -25,6 +25,16 @@ fun Alarm.forSave(): Alarm = copy(enabled = true, snoozedUntilEpochMs = null)
 /** Draft for a new alarm at [time] (seconds dropped); the repository assigns its id. */
 fun newAlarm(time: LocalTime): Alarm = Alarm(id = 0, hour = time.hour, minute = time.minute)
 
+/**
+ * What a label from text input becomes: trimmed, with line breaks and other whitespace runs folded to one space.
+ * Blank clears it. Uses [Char.isWhitespace], not regex `\s`, which on the JVM misses Unicode spaces.
+ */
+fun normalizeLabel(input: CharSequence): String = buildString {
+    for (c in input.trim()) {
+        if (!c.isWhitespace()) append(c) else if (last() != ' ') append(' ')
+    }
+}
+
 /** Removes that alarm and keeps [AlarmStore.nextId], so its id is never handed out again. */
 fun AlarmStore.without(id: Long): AlarmStore = copy(alarms = alarms.filterNot { it.id == id })
 

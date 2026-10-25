@@ -6,6 +6,7 @@ androidxActivity = "1.13.0"
 androidxCore = "1.18.0"
 androidxLifecycle = "2.10.0"
 androidxWearCompose = "1.6.2"
+androidxWearInput = "1.2.0"
 androidxComposeUi = "1.9.4"
 androidxComposeMaterialIcons = "1.7.8"
 androidxDatastore = "1.2.1"
@@ -29,6 +30,7 @@ androidx-compose-material-icons-core = { module = "androidx.compose.material:mat
 androidx-wear-compose-foundation = { module = "androidx.wear.compose:compose-foundation", version.ref = "androidxWearCompose" }
 androidx-wear-compose-material3 = { module = "androidx.wear.compose:compose-material3", version.ref = "androidxWearCompose" }
 androidx-wear-compose-navigation3 = { module = "androidx.wear.compose:compose-navigation3", version.ref = "androidxWearCompose" }
+androidx-wear-input = { module = "androidx.wear:wear-input", version.ref = "androidxWearInput" }
 androidx-navigation3-runtime = { module = "androidx.navigation3:navigation3-runtime", version.ref = "androidxNavigation3" }
 androidx-navigation3-ui = { module = "androidx.navigation3:navigation3-ui", version.ref = "androidxNavigation3" }
 androidx-datastore = { module = "androidx.datastore:datastore", version.ref = "androidxDatastore" }

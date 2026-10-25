@@ -89,4 +89,33 @@ class AlarmEditTest {
         val store = AlarmStore(alarms = listOf(alarm(1)), nextId = 2)
         assertEquals(store, store.without(9))
     }
+
+    @Test
+    fun normalizeLabelTrims() {
+        assertEquals("Gym", normalizeLabel("  Gym  "))
+    }
+
+    @Test
+    fun normalizeLabelFoldsWhitespaceRuns() {
+        assertEquals("Take meds", normalizeLabel("Take\nmeds"))
+        assertEquals("a b", normalizeLabel("a \n\t b"))
+    }
+
+    @Test
+    fun normalizeLabelBlankIsEmpty() {
+        assertEquals("", normalizeLabel(""))
+        assertEquals("", normalizeLabel(" \n "))
+    }
+
+    @Test
+    fun normalizeLabelKeepsInnerText() {
+        assertEquals("Pills 💊", normalizeLabel("Pills 💊"))
+    }
+
+    @Test
+    fun normalizeLabelFoldsUnicodeWhitespace() {
+        assertEquals("a b", normalizeLabel("a  b"))
+        assertEquals("Take meds", normalizeLabel("Take meds"))
+        assertEquals("Gym", normalizeLabel("　Gym　"))
+    }
 }
