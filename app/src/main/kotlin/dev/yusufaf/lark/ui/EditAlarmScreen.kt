@@ -1,5 +1,9 @@
 package dev.yusufaf.lark.ui
 
+import android.content.ActivityNotFoundException
+import android.util.Log
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.gestures.scrollable
 import androidx.compose.foundation.layout.Box
@@ -15,6 +19,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalScrollCaptureInProgress
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.wear.compose.foundation.lazy.TransformingLazyColumn
 import androidx.wear.compose.foundation.lazy.items
 import androidx.wear.compose.foundation.lazy.rememberTransformingLazyColumnState
@@ -44,6 +49,7 @@ import dev.yusufaf.lark.core.snoozeOptionIndex
 import dev.yusufaf.lark.core.timeText
 import dev.yusufaf.lark.core.toggled
 import dev.yusufaf.lark.core.weekdays
+import dev.yusufaf.lark.schedule.AlarmScheduler
 import java.time.LocalTime
 
 /** [initial] is null while an existing alarm loads. */
@@ -66,6 +72,9 @@ private fun EditAlarmContent(initial: Alarm, isNew: Boolean, onSave: (Alarm) -> 
     // The screen closes after a save or delete, but a double tap lands before that.
     var done by remember { mutableStateOf(false) }
     val locale = LocalConfiguration.current.locales[0]
+    val labelInput = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        labelFromResult(result)?.let { draft = draft.copy(label = it) }
+    }
 
     val listState = rememberTransformingLazyColumnState()
     val spec = rememberTransformationSpec()
@@ -114,6 +123,41 @@ private fun EditAlarmContent(initial: Alarm, isNew: Boolean, onSave: (Alarm) -> 
                         .minimumVerticalContentPadding(ButtonDefaults.minimumVerticalListContentPadding),
                     transformation = SurfaceTransformation(spec),
                 )
+            }
+            item {
+                Button(
+                    onClick = {
+                        try {
+                            labelInput.launch(labelInputIntent())
+                        } catch (e: ActivityNotFoundException) {
+                            Log.w(AlarmScheduler.TAG, "no text input on this watch", e)
+                        }
+                    },
+                    label = { Text("Label") },
+                    secondaryLabel = {
+                        Text(draft.label.ifBlank { "None" }, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .transformedHeight(this, spec)
+                        .minimumVerticalContentPadding(ButtonDefaults.minimumVerticalListContentPadding),
+                    transformation = SurfaceTransformation(spec),
+                )
+            }
+            // RemoteInput can't prefill or reliably submit empty text, so clearing gets its own row.
+            if (draft.label.isNotBlank()) {
+                item {
+                    Button(
+                        onClick = { draft = draft.copy(label = "") },
+                        label = { Text("Clear label") },
+                        colors = ButtonDefaults.filledTonalButtonColors(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .transformedHeight(this, spec)
+                            .minimumVerticalContentPadding(ButtonDefaults.minimumVerticalListContentPadding),
+                        transformation = SurfaceTransformation(spec),
+                    )
+                }
             }
             item {
                 ListHeader(
