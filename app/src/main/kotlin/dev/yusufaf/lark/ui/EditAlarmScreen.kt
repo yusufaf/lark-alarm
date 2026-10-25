@@ -14,6 +14,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.Saver
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -50,7 +52,13 @@ import dev.yusufaf.lark.core.timeText
 import dev.yusufaf.lark.core.toggled
 import dev.yusufaf.lark.core.weekdays
 import dev.yusufaf.lark.schedule.AlarmScheduler
+import kotlinx.serialization.json.Json
 import java.time.LocalTime
+
+private val AlarmSaver = Saver<Alarm, String>(
+    { Json.encodeToString(Alarm.serializer(), it) },
+    { Json.decodeFromString(Alarm.serializer(), it) },
+)
 
 /** [initial] is null while an existing alarm loads. */
 @Composable
@@ -64,11 +72,12 @@ fun EditAlarmScreen(initial: Alarm?, isNew: Boolean, onSave: (Alarm) -> Unit, on
 
 @Composable
 private fun EditAlarmContent(initial: Alarm, isNew: Boolean, onSave: (Alarm) -> Unit, onDelete: () -> Unit) {
-    var draft by remember { mutableStateOf(initial) }
+    // Label input leaves the activity, and a low-RAM watch may kill the process behind it.
+    var draft by rememberSaveable(stateSaver = AlarmSaver) { mutableStateOf(initial) }
     // New alarms open straight into the time picker; swiping it away still leaves a usable draft.
-    var showTime by remember { mutableStateOf(isNew) }
-    var showSnooze by remember { mutableStateOf(false) }
-    var showDelete by remember { mutableStateOf(false) }
+    var showTime by rememberSaveable { mutableStateOf(isNew) }
+    var showSnooze by rememberSaveable { mutableStateOf(false) }
+    var showDelete by rememberSaveable { mutableStateOf(false) }
     // The screen closes after a save or delete, but a double tap lands before that.
     var done by remember { mutableStateOf(false) }
     val locale = LocalConfiguration.current.locales[0]
