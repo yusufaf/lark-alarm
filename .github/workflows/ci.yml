@@ -15,7 +15,8 @@ jobs:
           distribution: temurin
           java-version: 21
       - uses: gradle/actions/setup-gradle@v4
-      # assembleRelease runs R8, so a dependency that breaks minification fails
-      # here. It can't catch code R8 strips that only fails at runtime; that
-      # still needs the release APK run on a watch.
+      # assembleRelease runs R8 and lintVitalRelease, so a dependency that breaks
+      # minification, or a fatal lint issue, fails here. It can't catch code R8
+      # strips that only fails at runtime; that still needs the release APK run
+      # on a watch.
       - run: ./gradlew :core:test :app:assembleDebug :app:assembleRelease --console=plain
