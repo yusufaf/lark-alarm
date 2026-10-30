@@ -12,7 +12,7 @@ android {
         applicationId = "dev.yusufaf.lark"
         minSdk = 30
         targetSdk = 36
-        versionName = "0.0.0" // x-release-please-version
+        versionName = "0.1.0" // x-release-please-version
 
         // release-please bumps versionName; versionCode follows it so a
         // semver bump is always an upgrade on the watch. Only the numeric core
