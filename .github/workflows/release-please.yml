@@ -4,7 +4,7 @@ on:
   push:
     branches: [main]
   # Rebuilds and re-uploads the APK for an existing release, e.g. after a bad
-  # signing run. The workflow file comes from main; the app code from the tag.
+  # signing run. Must be dispatched from main; the app code comes from the tag.
   workflow_dispatch:
     inputs:
       tag:
@@ -34,16 +34,20 @@ jobs:
   apk:
     needs: release-please
     # !cancelled() lets this run on workflow_dispatch, where release-please is skipped.
-    if: ${{ !cancelled() && (needs.release-please.outputs.release_created == 'true' || github.event_name == 'workflow_dispatch') }}
+    if: ${{ !cancelled() && (needs.release-please.outputs.release_created == 'true' || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main')) }}
     runs-on: ubuntu-latest
     env:
       TAG: ${{ needs.release-please.outputs.tag_name || inputs.tag }}
       # SHA-256 of the certificate in DEBUG_KEYSTORE_B64. Public, not a secret.
       EXPECTED_CERT_SHA256: 069e1d4af7dfab64979f70cca17a0feb176f45c4bf25eba1ea1b21aeb581bcc3
     steps:
+      - name: Check the release exists
+        run: gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json tagName
+        env:
+          GH_TOKEN: ${{ github.token }}
       - uses: actions/checkout@v5
         with:
-          ref: ${{ env.TAG }}
+          ref: refs/tags/${{ env.TAG }}
       - uses: actions/setup-java@v5
         with:
           distribution: temurin
