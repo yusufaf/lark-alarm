@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.1](https://github.com/yusufaf/lark-alarm/compare/v0.1.0...v0.1.1) (2026-10-31)
+
+
+### Bug Fixes
+
+* **release:** sign the CI APK with the stable debug key ([#45](https://github.com/yusufaf/lark-alarm/issues/45)) ([3a1923b](https://github.com/yusufaf/lark-alarm/commit/3a1923b92f04f9e4014efa6e81fc5a4b1205f99e))
+
 ## 0.1.0 (2026-10-30)
 
 
