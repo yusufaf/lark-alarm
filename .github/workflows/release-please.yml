@@ -3,6 +3,13 @@ name: Release
 on:
   push:
     branches: [main]
+  # Rebuilds and re-uploads the APK for an existing release, e.g. after a bad
+  # signing run. Must be dispatched from main; the app code comes from the tag.
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing release tag to rebuild, e.g. v0.1.0
+        required: true
 
 permissions:
   contents: write
@@ -10,6 +17,7 @@ permissions:
 
 jobs:
   release-please:
+    if: ${{ github.event_name == 'push' }}
     runs-on: ubuntu-latest
     outputs:
       release_created: ${{ steps.release.outputs.release_created }}
@@ -25,12 +33,27 @@ jobs:
 
   apk:
     needs: release-please
-    if: ${{ needs.release-please.outputs.release_created == 'true' }}
+    # !cancelled() lets this run on workflow_dispatch, where release-please is skipped.
+    if: ${{ !cancelled() && (needs.release-please.outputs.release_created == 'true' || github.event_name == 'workflow_dispatch') }}
     runs-on: ubuntu-latest
+    env:
+      TAG: ${{ needs.release-please.outputs.tag_name || inputs.tag }}
+      # SHA-256 of the certificate in DEBUG_KEYSTORE_B64. Public, not a secret.
+      EXPECTED_CERT_SHA256: 069e1d4af7dfab64979f70cca17a0feb176f45c4bf25eba1ea1b21aeb581bcc3
     steps:
+      - name: Check the dispatch
+        if: ${{ github.event_name == 'workflow_dispatch' }}
+        run: |
+          if [ "$GITHUB_REF" != refs/heads/main ]; then
+            echo "::error::Dispatch this workflow from main, not $GITHUB_REF"
+            exit 1
+          fi
+          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json tagName
+        env:
+          GH_TOKEN: ${{ github.token }}
       - uses: actions/checkout@v5
         with:
-          ref: ${{ needs.release-please.outputs.tag_name }}
+          ref: refs/tags/${{ env.TAG }}
       - uses: actions/setup-java@v5
         with:
           distribution: temurin
@@ -39,6 +62,8 @@ jobs:
       # Release builds are debug-signed (see app/build.gradle.kts). A runner's
       # auto-generated debug keystore differs every run, which would make each
       # release un-upgradeable over the last; restore one stable keystore instead.
+      # AGP looks under $XDG_CONFIG_HOME/.android before ~/.android, and runners
+      # set XDG_CONFIG_HOME, so pin the folder with ANDROID_USER_HOME.
       - name: Restore debug keystore
         env:
           DEBUG_KEYSTORE_B64: ${{ secrets.DEBUG_KEYSTORE_B64 }}
@@ -47,10 +72,20 @@ jobs:
             echo "::error::DEBUG_KEYSTORE_B64 secret is not set; refusing to publish an APK signed with a throwaway key"
             exit 1
           fi
-          mkdir -p ~/.android
-          echo "$DEBUG_KEYSTORE_B64" | base64 -d > ~/.android/debug.keystore
+          mkdir -p "$HOME/.android"
+          echo "$DEBUG_KEYSTORE_B64" | base64 -d > "$HOME/.android/debug.keystore"
+          echo "ANDROID_USER_HOME=$HOME/.android" >> "$GITHUB_ENV"
       - run: ./gradlew :app:assembleRelease --console=plain
+      - name: Check signing certificate
+        run: |
+          apksigner="$(printf '%s\n' "$ANDROID_HOME"/build-tools/* | sort -V | tail -n 1)/apksigner"
+          certs="$("$apksigner" verify --print-certs app/build/outputs/apk/release/app-release.apk)"
+          echo "$certs"
+          actual="$(echo "$certs" | sed -n 's/.*certificate SHA-256 digest: //p' | sort -u)"
+          if [ "$actual" != "$EXPECTED_CERT_SHA256" ]; then
+            echo "::error::APK is signed with $actual, expected $EXPECTED_CERT_SHA256; not uploading"
+            exit 1
+          fi
       - run: gh release upload "$TAG" app/build/outputs/apk/release/app-release.apk --clobber
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ needs.release-please.outputs.tag_name }}
