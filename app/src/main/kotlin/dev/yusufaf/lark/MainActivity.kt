@@ -53,6 +53,12 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val app = application as LarkApplication
+        // A process that started before the first unlock skipped the store move (#43); finish it
+        // before the list shows an empty store the user might add to. The moved alarms were never
+        // armed this boot.
+        app.scope.launch(start = CoroutineStart.UNDISPATCHED) {
+            if (app.repository.migrateLegacyStore()) app.scheduler.rescheduleAll(alarmsLost = true)
+        }
         setContent {
             MaterialTheme {
                 LarkApp(app, notificationsBlocked, onFixNotifications = ::openNotificationSettings)
