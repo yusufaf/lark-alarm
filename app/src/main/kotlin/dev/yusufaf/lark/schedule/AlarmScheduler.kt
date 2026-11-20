@@ -177,7 +177,7 @@ class AlarmScheduler(private val context: Context, private val repository: Alarm
 
     // Starting RingService from here is denied ("Background started FGS: Disallowed" on the
     // watch, #21): the exemption belongs to an exact alarm's own delivery, not to the
-    // BOOT_COMPLETED / MY_PACKAGE_REPLACED receiver. So fire it through AlarmManager like
+    // boot / MY_PACKAGE_REPLACED receiver. So fire it through AlarmManager like
     // an on-time ring. armedFor stays at the original instant, which keeps MISSED_GRACE
     // bounding the lateness if the process dies before this alarm goes off; RingService's
     // finishRing then disables or re-arms the alarm as usual. The fire carries that original

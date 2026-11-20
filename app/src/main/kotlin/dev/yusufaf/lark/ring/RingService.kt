@@ -41,7 +41,7 @@ import kotlinx.coroutines.runBlocking
  * Keeps the watch vibrating, and playing the alarm tone when the alarm has sound on, while an
  * alarm rings. Runs as a `systemExempted` foreground
  * service, which an exact alarm's delivery may start from the background even after boot.
- * Other receivers (BOOT_COMPLETED, MY_PACKAGE_REPLACED) may not, so go through AlarmManager.
+ * Other receivers (LOCKED_BOOT_COMPLETED, BOOT_COMPLETED, MY_PACKAGE_REPLACED) may not, so go through AlarmManager.
  */
 class RingService : Service() {
     private val app get() = application as LarkApplication

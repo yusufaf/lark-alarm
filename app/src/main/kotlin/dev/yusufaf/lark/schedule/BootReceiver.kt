@@ -11,6 +11,10 @@ import kotlinx.coroutines.launch
  * AlarmManager forgets everything on reboot and exact alarms drift when the clock or
  * zone changes, so re-arm from persisted state. Exported only for protected system
  * broadcasts (see the manifest filter).
+ *
+ * With a screen lock, LOCKED_BOOT_COMPLETED comes at boot and BOOT_COMPLETED only after the
+ * first unlock (#43). Both re-arm; the second finds everything armed, like BOOT_COMPLETED
+ * followed by MY_PACKAGE_REPLACED.
  */
 class BootReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
@@ -20,7 +24,9 @@ class BootReceiver : BroadcastReceiver() {
         val pending = goAsync()
         app.scope.launch {
             try {
-                app.scheduler.rescheduleAll(alarmsLost = intent.action in LOST_STATE_ACTIONS)
+                // Alarms moved in from the old store were armed before the reboot, if at all.
+                val moved = app.repository.migrateLegacyStore()
+                app.scheduler.rescheduleAll(alarmsLost = moved || intent.action in LOST_STATE_ACTIONS)
             } finally {
                 pending.finish()
             }
@@ -29,6 +35,7 @@ class BootReceiver : BroadcastReceiver() {
 
     private companion object {
         val HANDLED_ACTIONS = setOf(
+            Intent.ACTION_LOCKED_BOOT_COMPLETED,
             Intent.ACTION_BOOT_COMPLETED,
             Intent.ACTION_TIME_CHANGED,
             Intent.ACTION_TIMEZONE_CHANGED,
@@ -37,6 +44,7 @@ class BootReceiver : BroadcastReceiver() {
 
         // AlarmManager may have dropped its alarms after these.
         val LOST_STATE_ACTIONS = setOf(
+            Intent.ACTION_LOCKED_BOOT_COMPLETED,
             Intent.ACTION_BOOT_COMPLETED,
             Intent.ACTION_MY_PACKAGE_REPLACED,
         )
