@@ -40,8 +40,12 @@
             </intent-filter>
         </activity>
 
+        <!-- Direct-boot aware so alarms re-arm and ring before the first unlock after a reboot
+             (#43); what they read is in device-protected storage. MainActivity isn't: editing
+             waits for the unlock. -->
         <activity
             android:name=".ring.RingActivity"
+            android:directBootAware="true"
             android:exported="false"
             android:excludeFromRecents="true"
             android:launchMode="singleInstance"
@@ -51,18 +55,22 @@
 
         <service
             android:name=".ring.RingService"
+            android:directBootAware="true"
             android:exported="false"
             android:foregroundServiceType="systemExempted" />
 
         <receiver
             android:name=".schedule.AlarmReceiver"
+            android:directBootAware="true"
             android:exported="false" />
 
         <!-- Exported only for these protected system broadcasts; nothing else can send them. -->
         <receiver
             android:name=".schedule.BootReceiver"
+            android:directBootAware="true"
             android:exported="true">
             <intent-filter>
+                <action android:name="android.intent.action.LOCKED_BOOT_COMPLETED" />
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
                 <action android:name="android.intent.action.TIME_SET" />
                 <action android:name="android.intent.action.TIMEZONE_CHANGED" />

@@ -37,6 +37,7 @@ import java.util.Locale
  * SYSTEM_ALERT_WINDOW (#29); otherwise the notification's content intent or opening Lark
  * mid-ring (the only route when notifications are blocked, #22) lead here. Deliberately has
  * no swipe-to-dismiss: only the buttons (or the notification actions) silence the alarm.
+ * Direct-boot aware and shown over the keyguard, so it works before the first unlock (#43).
  */
 class RingActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {

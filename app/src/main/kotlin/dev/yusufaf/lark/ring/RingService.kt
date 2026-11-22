@@ -41,7 +41,7 @@ import kotlinx.coroutines.runBlocking
  * Keeps the watch vibrating, and playing the alarm tone when the alarm has sound on, while an
  * alarm rings. Runs as a `systemExempted` foreground
  * service, which an exact alarm's delivery may start from the background even after boot.
- * Other receivers (BOOT_COMPLETED, MY_PACKAGE_REPLACED) may not, so go through AlarmManager.
+ * Other receivers (LOCKED_BOOT_COMPLETED, BOOT_COMPLETED, MY_PACKAGE_REPLACED) may not, so go through AlarmManager.
  */
 class RingService : Service() {
     private val app get() = application as LarkApplication
@@ -70,10 +70,14 @@ class RingService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
-            ACTION_RING -> startRinging(
-                intent.getLongExtra(AlarmScheduler.EXTRA_ALARM_ID, -1),
-                AlarmScheduler.armedForExtra(intent),
-            )
+            ACTION_RING -> try {
+                startRinging(
+                    intent.getLongExtra(AlarmScheduler.EXTRA_ALARM_ID, -1),
+                    AlarmScheduler.armedForExtra(intent),
+                )
+            } finally {
+                releaseFireWakeLock()
+            }
             ACTION_DISMISS -> finishRing(RingEnd.Dismissed)
             ACTION_SNOOZE -> finishRing(RingEnd.Snoozed)
             // Restarted by the system with no intent: nothing to ring, go away quietly.
@@ -313,6 +317,7 @@ class RingService : Service() {
         const val ACTION_DISMISS = "dev.yusufaf.lark.action.DISMISS"
         const val ACTION_SNOOZE = "dev.yusufaf.lark.action.SNOOZE"
         const val RING_TIMEOUT_MS = 5 * 60_000L
+        private const val FIRE_WAKE_LOCK_TIMEOUT_MS = 60_000L
 
         private val _ringingAlarmId = MutableStateFlow<Long?>(null)
 
@@ -327,6 +332,37 @@ class RingService : Service() {
                 .setAction(ACTION_RING)
                 .putExtra(AlarmScheduler.EXTRA_ALARM_ID, id)
                 .apply { if (armedFor != null) putExtra(AlarmScheduler.EXTRA_ARMED_FOR, armedFor) }
+
+        // AlarmManager's wakelock ends when the receiver returns and startForegroundService() holds
+        // none, so a locked, idle watch slept 4 minutes between the fire and the ring (#43). Held
+        // until onStartCommand has the ring going (Lark:ring) or has given up; the timeout is a
+        // backstop. Released only once every pending start is handled, so a fire that doesn't ring
+        // can't drop it while another is still on its way. Main thread only: AlarmReceiver.onReceive
+        // and onStartCommand.
+        private var fireWakeLock: PowerManager.WakeLock? = null
+        private var pendingFires = 0
+
+        /** Starts a ring from an alarm's delivery, keeping the CPU awake until [onStartCommand] has handled it. */
+        fun startFromAlarm(context: Context, id: Long, armedFor: Long?) {
+            val lock = fireWakeLock ?: context.applicationContext.getSystemService(PowerManager::class.java)
+                .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "Lark:fire")
+                .apply { setReferenceCounted(false) }
+                .also { fireWakeLock = it }
+            pendingFires++
+            lock.acquire(FIRE_WAKE_LOCK_TIMEOUT_MS)
+            try {
+                ContextCompat.startForegroundService(context, ringIntent(context, id, armedFor))
+            } catch (e: RuntimeException) {
+                releaseFireWakeLock()
+                throw e
+            }
+        }
+
+        // A process restarted since the fire has no lock and a zero count; the lock's timeout covers that.
+        private fun releaseFireWakeLock() {
+            pendingFires = (pendingFires - 1).coerceAtLeast(0)
+            if (pendingFires == 0) fireWakeLock?.takeIf { it.isHeld }?.release()
+        }
 
         fun dismissIntent(context: Context): Intent =
             Intent(context, RingService::class.java).setAction(ACTION_DISMISS)
