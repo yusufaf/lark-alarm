@@ -336,8 +336,11 @@ class RingService : Service() {
         // AlarmManager's wakelock ends when the receiver returns and startForegroundService() holds
         // none, so a locked, idle watch slept 4 minutes between the fire and the ring (#43). Held
         // until onStartCommand has the ring going (Lark:ring) or has given up; the timeout is a
-        // backstop. Main thread only: AlarmReceiver.onReceive and onStartCommand.
+        // backstop. Released only once every pending start is handled, so a fire that doesn't ring
+        // can't drop it while another is still on its way. Main thread only: AlarmReceiver.onReceive
+        // and onStartCommand.
         private var fireWakeLock: PowerManager.WakeLock? = null
+        private var pendingFires = 0
 
         /** Starts a ring from an alarm's delivery, keeping the CPU awake until [onStartCommand] has handled it. */
         fun startFromAlarm(context: Context, id: Long, armedFor: Long?) {
@@ -345,12 +348,20 @@ class RingService : Service() {
                 .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "Lark:fire")
                 .apply { setReferenceCounted(false) }
                 .also { fireWakeLock = it }
+            pendingFires++
             lock.acquire(FIRE_WAKE_LOCK_TIMEOUT_MS)
-            ContextCompat.startForegroundService(context, ringIntent(context, id, armedFor))
+            try {
+                ContextCompat.startForegroundService(context, ringIntent(context, id, armedFor))
+            } catch (e: RuntimeException) {
+                releaseFireWakeLock()
+                throw e
+            }
         }
 
+        // A process restarted since the fire has no lock and a zero count; the lock's timeout covers that.
         private fun releaseFireWakeLock() {
-            fireWakeLock?.takeIf { it.isHeld }?.release()
+            pendingFires = (pendingFires - 1).coerceAtLeast(0)
+            if (pendingFires == 0) fireWakeLock?.takeIf { it.isHeld }?.release()
         }
 
         fun dismissIntent(context: Context): Intent =
